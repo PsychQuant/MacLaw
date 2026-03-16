@@ -23,8 +23,9 @@ actor GatewayRunner {
 
         // 2. Start Telegram poller
         let tgAPI = api
+        let tgConf = tgConfig
         poller = TelegramPoller(api: api) { message in
-            await GatewayRunner.handleMessage(message, api: tgAPI)
+            await GatewayRunner.handleMessage(message, api: tgAPI, tgConfig: tgConf)
         }
         await poller!.start()
         log("Telegram poller started")
@@ -70,13 +71,25 @@ actor GatewayRunner {
 
     // MARK: - Message handling (delegates to codex -p)
 
-    private static func handleMessage(_ message: TGMessage, api: TelegramAPI) async {
+    private static func handleMessage(_ message: TGMessage, api: TelegramAPI, tgConfig: TelegramConfig) async {
         guard let text = message.text, !text.isEmpty else { return }
 
         let chatId = message.chat.id
         let senderName = message.from?.displayName ?? "Unknown"
         let ts = ISO8601DateFormatter().string(from: Date())
-        print("[\(ts)] [gateway] Message from \(senderName) in \(chatId): \(text.prefix(80))")
+        print("[\(ts)] [gateway] Message from \(senderName) (\(message.from?.id.description ?? "?")) in \(chatId): \(text.prefix(80))")
+
+        // Access control
+        switch AccessControl.check(message: message, config: tgConfig) {
+        case .denied(let reason):
+            print("[\(ts)] [gateway] Access denied: \(reason)")
+            try? await api.sendMessage(chatId: chatId, text: "Access denied: \(reason)")
+            return
+        case .ignored:
+            return
+        case .allowed:
+            break
+        }
 
         // Handle /commands first
         if text.hasPrefix("/") {
