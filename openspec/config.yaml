@@ -1,0 +1,30 @@
+schema: spec-driven
+locale: en
+
+context: |
+  ## Architecture
+
+  MacLaw: macOS-native AI agent runtime (Swift)
+  Target: PsychQuantClaw Mac Mini (Apple Silicon, macOS 14+)
+
+  ## Design Principles
+
+  1. **Delegate to CLI, don't reimplement**: When a capable CLI tool exists (codex, claude, gh, brew),
+     shell out to it via Process instead of reimplementing its functionality. The CLI handles auth,
+     model routing, rate limiting, and updates. MacLaw is a bridge/orchestrator, not a replacement.
+
+  2. **macOS-native security**: Use Keychain for secrets, XPC for isolation (v2), launchd for lifecycle.
+     Never store secrets as plaintext files.
+
+  3. **Apple networking stack**: Use URLSession + NWPathMonitor for all network operations.
+     Never use third-party HTTP libraries. The OS handles IPv4/IPv6, sleep/wake, VPN transparently.
+
+  4. **Zero external Swift dependencies** (except swift-argument-parser for CLI):
+     URLSession over Alamofire, Security.framework over custom crypto, Foundation over SwiftyJSON.
+
+  ## Tech Stack
+
+  - Swift 6.0, macOS 14+, Apple Silicon
+  - swift-argument-parser (CLI only)
+  - Telegram Bot API via raw URLSession + Codable
+  - LLM via `codex -p` CLI (not direct API calls)
