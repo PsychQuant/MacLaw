@@ -15,12 +15,10 @@ struct GatewayRun: AsyncParsableCommand {
         abstract: "Start the gateway"
     )
 
-    @Option(name: .long, help: "Port to bind")
-    var port: Int = 18790
-
     func run() async throws {
-        print("MacLaw gateway starting on port \(port)...")
-        // TODO: Telegram polling + LLM routing + Cron scheduler
+        let config = try ConfigLoader.load()
+        let runner = GatewayRunner(config: config)
+        try await runner.run()
     }
 }
 
@@ -31,6 +29,28 @@ struct GatewayStatus: ParsableCommand {
     )
 
     func run() throws {
-        print(#"{"ok":true,"status":"not running"}"#)
+        // Check if maclaw gateway process is running
+        let result = processCheck("maclaw.*gateway")
+        let json: String
+        if let pid = result {
+            json = #"{"ok":true,"data":{"running":true,"pid":\#(pid)}}"#
+        } else {
+            json = #"{"ok":true,"data":{"running":false}}"#
+        }
+        print(json)
+    }
+
+    private func processCheck(_ pattern: String) -> Int? {
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", pattern]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return output.split(separator: "\n").compactMap { Int($0) }.first
     }
 }
