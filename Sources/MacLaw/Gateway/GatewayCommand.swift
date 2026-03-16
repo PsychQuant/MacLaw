@@ -68,10 +68,11 @@ struct GatewayRestart: AsyncParsableCommand {
 }
 
 private func findGatewayPids() -> [Int32] {
+    // Use pkill-style broad match: any process with "maclaw" in the command line
     let process = Process()
     let pipe = Pipe()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-    process.arguments = ["-f", "maclaw.*gateway.*run"]
+    process.arguments = ["-f", "maclaw"]
     process.standardOutput = pipe
     process.standardError = FileHandle.nullDevice
     try? process.run()
