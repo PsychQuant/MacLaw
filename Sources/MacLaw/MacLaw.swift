@@ -6,6 +6,6 @@ struct MacLaw: AsyncParsableCommand {
         commandName: "maclaw",
         abstract: "macOS-native AI agent runtime",
         version: "0.1.0",
-        subcommands: [GatewayCommand.self, SecretsCommand.self, DaemonCommand.self]
+        subcommands: [GatewayCommand.self, SecretsCommand.self, AuthCommand.self, DaemonCommand.self]
     )
 }

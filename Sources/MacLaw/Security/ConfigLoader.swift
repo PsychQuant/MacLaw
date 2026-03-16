@@ -2,6 +2,7 @@ import Foundation
 
 enum ConfigLoader {
     private static let keychainPrefix = "@keychain:"
+    private static let oauthPrefix = "@oauth:"
 
     static var configDir: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -46,9 +47,23 @@ enum ConfigLoader {
     }
 
     private static func resolveValue(_ value: String) throws -> String {
-        guard value.hasPrefix(keychainPrefix) else { return value }
-        let key = String(value.dropFirst(keychainPrefix.count))
-        return try KeychainManager.get(key: key)
+        if value.hasPrefix(keychainPrefix) {
+            let key = String(value.dropFirst(keychainPrefix.count))
+            return try KeychainManager.get(key: key)
+        }
+        if value.hasPrefix(oauthPrefix) {
+            // OAuth resolution needs async; use a synchronous bridge for config loading.
+            // This blocks briefly but only runs once at startup.
+            let provider = String(value.dropFirst(oauthPrefix.count))
+            let credential = try OAuthStore.load(provider: provider)
+            if credential.isExpired {
+                // Can't do async refresh here; return expired token and let LLMProvider handle refresh
+                // Or better: warn the user
+                print("[config] Warning: OAuth token for '\(provider)' is expired. Run 'maclaw auth login' to refresh.")
+            }
+            return credential.accessToken
+        }
+        return value
     }
 }
 
