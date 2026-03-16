@@ -1,11 +1,10 @@
 import Foundation
 
-/// Orchestrates all MacLaw services: Telegram, LLM, Cron.
+/// Orchestrates all MacLaw services: Telegram + Codex CLI + Cron.
 actor GatewayRunner {
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
-    private var router: ModelRouter?
     private var cronScheduler: CronScheduler?
 
     init(config: MacLawConfig) {
@@ -15,33 +14,26 @@ actor GatewayRunner {
     func run() async throws {
         log("MacLaw gateway starting...")
 
-        // 1. Initialize LLM router
-        router = ModelRouter(config: config.llm)
-        log("LLM router initialized")
-
-        // 2. Initialize Telegram
+        // 1. Initialize Telegram
         guard let tgConfig = config.telegram else {
             throw GatewayError.missingConfig("telegram")
         }
         let api = TelegramAPI(token: tgConfig.botToken)
         telegramAPI = api
 
-        // 3. Start Telegram poller
-        let messageRouter = router!
+        // 2. Start Telegram poller
         let tgAPI = api
-        poller = TelegramPoller(api: api) { [weak self] message in
-            guard self != nil else { return }
-            await GatewayRunner.handleMessage(message, router: messageRouter, api: tgAPI)
+        poller = TelegramPoller(api: api) { message in
+            await GatewayRunner.handleMessage(message, api: tgAPI)
         }
         await poller!.start()
         log("Telegram poller started")
 
-        // 4. Start cron scheduler
+        // 3. Start cron scheduler
         if let cronJobs = config.cron?.jobs, !cronJobs.isEmpty {
-            let cronRouter = router!
             let cronAPI = api
             cronScheduler = CronScheduler(jobs: cronJobs) { job in
-                await GatewayRunner.executeCronJob(job, router: cronRouter, api: cronAPI)
+                await GatewayRunner.executeCronJob(job, api: cronAPI)
             }
             await cronScheduler!.start()
         }
@@ -76,13 +68,9 @@ actor GatewayRunner {
         log("Gateway stopped")
     }
 
-    // MARK: - Message handling
+    // MARK: - Message handling (delegates to codex -p)
 
-    private static func handleMessage(
-        _ message: TGMessage,
-        router: ModelRouter,
-        api: TelegramAPI
-    ) async {
+    private static func handleMessage(_ message: TGMessage, api: TelegramAPI) async {
         guard let text = message.text, !text.isEmpty else { return }
 
         let chatId = message.chat.id
@@ -93,13 +81,8 @@ actor GatewayRunner {
         // Send typing indicator
         try? await api.sendChatAction(chatId: chatId)
 
-        // Build messages for LLM
-        let llmMessages: [LLMProvider.ChatMessage] = [
-            .init(role: "user", content: text),
-        ]
-
         do {
-            let response = try await router.complete(messages: llmMessages)
+            let response = try await CodexCLI.run(prompt: text)
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
             let errorMsg = "Sorry, I'm having trouble right now. Please try again later."
@@ -108,21 +91,12 @@ actor GatewayRunner {
         }
     }
 
-    // MARK: - Cron execution
+    // MARK: - Cron execution (delegates to codex -p)
 
-    private static func executeCronJob(
-        _ job: CronJobConfig,
-        router: ModelRouter,
-        api: TelegramAPI
-    ) async -> Result<String, Error> {
-        let messages: [LLMProvider.ChatMessage] = [
-            .init(role: "user", content: job.prompt),
-        ]
-
+    private static func executeCronJob(_ job: CronJobConfig, api: TelegramAPI) async -> Result<String, Error> {
         do {
-            let response = try await router.complete(messages: messages)
+            let response = try await CodexCLI.run(prompt: job.prompt)
 
-            // Deliver to Telegram if configured
             if let chatIdStr = job.deliverTo, let chatId = Int64(chatIdStr) {
                 try await TelegramSender.send(api: api, chatId: chatId, text: "[\(job.name)]\n\n\(response)")
             }
