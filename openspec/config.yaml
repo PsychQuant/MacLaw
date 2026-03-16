@@ -5,7 +5,8 @@ context: |
   ## Architecture
 
   MacLaw: macOS-native AI agent runtime (Swift)
-  Target: PsychQuantClaw Mac Mini (Apple Silicon, macOS 14+)
+  Target: Any Mac (Apple Silicon, macOS 14+)
+  Current deployment: PsychQuantClaw Mac Mini, but must be portable to any Mac.
 
   ## Design Principles
 
@@ -22,9 +23,17 @@ context: |
   4. **Zero external Swift dependencies** (except swift-argument-parser for CLI):
      URLSession over Alamofire, Security.framework over custom crypto, Foundation over SwiftyJSON.
 
+  5. **Portable across Macs**: All commands must work on any Mac, not just PsychQuantClaw.
+     - No hardcoded IPs, hostnames, paths, or machine-specific values
+     - All machine-specific config comes from ~/.maclaw/maclaw.json or Keychain
+     - Paths use $HOME or FileManager.homeDirectoryForCurrentUser, never absolute paths
+     - Port numbers are configurable, not hardcoded
+     - `maclaw setup` is the only entry point for first-time configuration
+     - CLI tools (codex, etc.) are found via PATH, not absolute path
+
   ## Tech Stack
 
   - Swift 6.0, macOS 14+, Apple Silicon
   - swift-argument-parser (CLI only)
   - Telegram Bot API via raw URLSession + Codable
-  - LLM via `codex -p` CLI (not direct API calls)
+  - LLM via `codex exec` CLI (not direct API calls)
