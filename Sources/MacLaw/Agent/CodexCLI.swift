@@ -2,9 +2,18 @@ import Foundation
 
 /// Calls `codex exec` to process prompts non-interactively.
 enum CodexCLI {
+    private static let systemPrompt = """
+        You are a helpful AI assistant running as a Telegram chatbot called MacLaw. \
+        Respond conversationally in the user's language. \
+        Do NOT read files, run commands, or act as a code agent. \
+        Just answer the user's question directly and concisely.
+        """
+
     static func run(prompt: String) async throws -> String {
         let outputFile = NSTemporaryDirectory() + "maclaw-codex-\(UUID().uuidString).txt"
         defer { try? FileManager.default.removeItem(atPath: outputFile) }
+
+        let fullPrompt = "\(systemPrompt)\n\nUser message: \(prompt)"
 
         let process = Process()
         let stderrPipe = Pipe()
@@ -12,7 +21,7 @@ enum CodexCLI {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [
             "codex", "exec",
-            prompt,
+            fullPrompt,
             "--sandbox", "read-only",
             "--skip-git-repo-check",
             "--ephemeral",
