@@ -78,7 +78,15 @@ actor GatewayRunner {
         let ts = ISO8601DateFormatter().string(from: Date())
         print("[\(ts)] [gateway] Message from \(senderName) in \(chatId): \(text.prefix(80))")
 
-        // Send typing indicator
+        // Handle /commands first
+        if text.hasPrefix("/") {
+            if let response = await TelegramCommandHandler.handle(command: text, message: message, api: api) {
+                try? await api.sendMessage(chatId: chatId, text: response)
+                return
+            }
+        }
+
+        // Send typing indicator for LLM calls
         try? await api.sendChatAction(chatId: chatId)
 
         do {
