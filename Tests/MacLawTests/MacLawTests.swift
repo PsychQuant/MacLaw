@@ -1,6 +1,8 @@
 import Testing
+@testable import MacLaw
 
-@Test func macLawVersion() {
-    // Placeholder — verify the project builds and tests run
-    #expect(true)
-}
+// Tests are organized by module:
+// - PKCETests.swift
+// - MessageChunkingTests.swift
+// - CronParserTests.swift
+// - ConfigLoaderTests.swift
