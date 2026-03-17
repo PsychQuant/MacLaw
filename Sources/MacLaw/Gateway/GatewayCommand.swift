@@ -29,15 +29,12 @@ struct GatewayStop: ParsableCommand {
     )
 
     func run() throws {
-        let pids = findGatewayPids()
-        if pids.isEmpty {
+        let killed = killAllMacLaw()
+        if killed.isEmpty {
             print("No running MacLaw gateway found")
-            return
+        } else {
+            print("Stopped MacLaw gateway (pid \(killed.map(String.init).joined(separator: ", ")))")
         }
-        for pid in pids {
-            kill(pid, SIGTERM)
-        }
-        print("Stopped MacLaw gateway (pid \(pids.map(String.init).joined(separator: ", ")))")
     }
 }
 
@@ -48,18 +45,22 @@ struct GatewayRestart: AsyncParsableCommand {
     )
 
     func run() async throws {
-        // Stop existing
-        let pids = findGatewayPids()
-        if !pids.isEmpty {
-            for pid in pids {
-                kill(pid, SIGTERM)
-            }
-            print("Stopped old gateway (pid \(pids.map(String.init).joined(separator: ", ")))")
-            // Brief wait for cleanup
-            try await Task.sleep(nanoseconds: 1_000_000_000)
+        let killed = killAllMacLaw()
+        if !killed.isEmpty {
+            print("Stopped old gateway (pid \(killed.map(String.init).joined(separator: ", ")))")
         }
 
-        // Start new
+        // Wait and verify all dead
+        for _ in 0..<5 {
+            try await Task.sleep(nanoseconds: 500_000_000)
+            let remaining = findGatewayPids()
+            if remaining.isEmpty { break }
+            // Force kill stragglers
+            for pid in remaining {
+                kill(pid, SIGKILL)
+            }
+        }
+
         print("Starting new gateway...")
         let config = try ConfigLoader.load()
         let runner = GatewayRunner(config: config)
@@ -67,8 +68,28 @@ struct GatewayRestart: AsyncParsableCommand {
     }
 }
 
+/// Kill all maclaw processes except self. SIGTERM first, then SIGKILL after 1s.
+@discardableResult
+private func killAllMacLaw() -> [Int32] {
+    let pids = findGatewayPids()
+    guard !pids.isEmpty else { return [] }
+
+    // SIGTERM
+    for pid in pids {
+        kill(pid, SIGTERM)
+    }
+
+    // Wait 1s, then SIGKILL any survivors
+    Thread.sleep(forTimeInterval: 1.0)
+    let survivors = findGatewayPids()
+    for pid in survivors {
+        kill(pid, SIGKILL)
+    }
+
+    return pids
+}
+
 private func findGatewayPids() -> [Int32] {
-    // Use pkill-style broad match: any process with "maclaw" in the command line
     let process = Process()
     let pipe = Pipe()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
