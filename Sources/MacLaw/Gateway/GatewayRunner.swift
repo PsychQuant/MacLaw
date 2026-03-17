@@ -102,7 +102,13 @@ actor GatewayRunner {
             }
         }
 
-        try? await api.sendChatAction(chatId: chatId)
+        // Keep sending "typing..." every 4s until codex responds
+        let typingTask = Task {
+            while !Task.isCancelled {
+                try? await api.sendChatAction(chatId: chatId)
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+            }
+        }
 
         do {
             let backend = await GatewayRunner.activeBackend.get()
@@ -110,11 +116,13 @@ actor GatewayRunner {
             let chatKey = String(chatId)
             let existingSession = await GatewayRunner.sessionManager.getSessionId(forChat: chatKey)
             let (response, newSessionId) = try await backend.run(prompt: text, model: model, sessionId: existingSession)
+            typingTask.cancel()
             if let sid = newSessionId ?? existingSession {
                 await GatewayRunner.sessionManager.updateSession(chatId: chatKey, sessionId: sid)
             }
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
+            typingTask.cancel()
             let errorMsg = "Sorry, I'm having trouble right now. Please try again later."
             try? await api.sendMessage(chatId: chatId, text: errorMsg)
             print("[\(ts)] [gateway] Error: \(error.localizedDescription)")
