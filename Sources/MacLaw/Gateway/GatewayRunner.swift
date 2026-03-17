@@ -1,9 +1,9 @@
 import Foundation
 
-/// Orchestrates all MacLaw services: Telegram + Codex CLI + Cron.
+/// Orchestrates all MacLaw services: Telegram + Backend CLI + Cron.
 actor GatewayRunner {
-    /// Current model — can be changed at runtime via /model set
     static let currentModel = CurrentModel()
+    static let activeBackend = ActiveBackend()
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
@@ -16,9 +16,11 @@ actor GatewayRunner {
     func run() async throws {
         log("MacLaw gateway starting...")
 
-        // 0. Set default model from config
-        if let model = config.model {
-            await GatewayRunner.currentModel.set(model)
+        // 0. Resolve backend
+        let backend = BackendRegistry.resolve(name: config.backend)
+        await GatewayRunner.activeBackend.set(backend)
+        log("Backend: \(backend.name)")
+        if let model = backend.readDefaultModel() {
             log("Model: \(model)")
         }
 
@@ -49,21 +51,15 @@ actor GatewayRunner {
 
         log("MacLaw gateway running. Press Ctrl+C to stop.")
 
-        // Keep running until signal
         let sigSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         signal(SIGINT, SIG_IGN)
         signal(SIGTERM, SIG_IGN)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            sigSource.setEventHandler {
-                continuation.resume()
-            }
+            sigSource.setEventHandler { continuation.resume() }
             sigSource.resume()
-
             let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-            termSource.setEventHandler {
-                continuation.resume()
-            }
+            termSource.setEventHandler { continuation.resume() }
             termSource.resume()
         }
 
@@ -77,7 +73,7 @@ actor GatewayRunner {
         log("Gateway stopped")
     }
 
-    // MARK: - Message handling (delegates to codex -p)
+    // MARK: - Message handling
 
     private static func handleMessage(_ message: TGMessage, api: TelegramAPI, tgConfig: TelegramConfig) async {
         guard let text = message.text, !text.isEmpty else { return }
@@ -87,7 +83,6 @@ actor GatewayRunner {
         let ts = ISO8601DateFormatter().string(from: Date())
         print("[\(ts)] [gateway] Message from \(senderName) (\(message.from?.id.description ?? "?")) in \(chatId): \(text.prefix(80))")
 
-        // Access control
         switch AccessControl.check(message: message, config: tgConfig) {
         case .denied(let reason):
             print("[\(ts)] [gateway] Access denied: \(reason)")
@@ -99,7 +94,6 @@ actor GatewayRunner {
             break
         }
 
-        // Handle /commands first
         if text.hasPrefix("/") {
             if let response = await TelegramCommandHandler.handle(command: text, message: message, api: api) {
                 try? await api.sendMessage(chatId: chatId, text: response)
@@ -107,12 +101,12 @@ actor GatewayRunner {
             }
         }
 
-        // Send typing indicator for LLM calls
         try? await api.sendChatAction(chatId: chatId)
 
         do {
+            let backend = await GatewayRunner.activeBackend.get()
             let model = await GatewayRunner.currentModel.get()
-            let response = try await CodexCLI.run(prompt: text, model: model)
+            let response = try await backend.run(prompt: text, model: model)
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
             let errorMsg = "Sorry, I'm having trouble right now. Please try again later."
@@ -121,11 +115,12 @@ actor GatewayRunner {
         }
     }
 
-    // MARK: - Cron execution (delegates to codex -p)
+    // MARK: - Cron execution
 
     private static func executeCronJob(_ job: CronJobConfig, api: TelegramAPI) async -> Result<String, Error> {
         do {
-            let response = try await CodexCLI.run(prompt: job.prompt)
+            let backend = await GatewayRunner.activeBackend.get()
+            let response = try await backend.run(prompt: job.prompt, model: nil)
 
             if let chatIdStr = job.deliverTo, let chatId = Int64(chatIdStr) {
                 try await TelegramSender.send(api: api, chatId: chatId, text: "[\(job.name)]\n\n\(response)")
@@ -143,9 +138,15 @@ actor GatewayRunner {
     }
 }
 
+/// Thread-safe active backend reference.
+actor ActiveBackend {
+    private var backend: Backend = CodexBackend()
+    func get() -> Backend { backend }
+    func set(_ b: Backend) { backend = b }
+}
+
 enum GatewayError: Error, LocalizedError {
     case missingConfig(String)
-
     var errorDescription: String? {
         switch self {
         case .missingConfig(let section): "Missing config section: \(section)"

@@ -71,18 +71,19 @@ enum TelegramCommandHandler {
     // MARK: - /model
 
     private static func handleModel(arg1: String?, arg2: String?) async -> String {
+        let backend = await GatewayRunner.activeBackend.get()
         let override = await GatewayRunner.currentModel.get()
-        let codexDefault = readCodexDefaultModel()
-        let current = override ?? codexDefault ?? "unknown"
-        let source = override != nil ? "(override)" : "(from ~/.codex/config.toml)"
+        let backendDefault = backend.readDefaultModel()
+        let current = override ?? backendDefault ?? "default"
+        let source = override != nil ? "(override)" : "(from \(backend.name) config)"
 
         guard let action = arg1 else {
             return """
-            Current model: \(current) \(source)
-            Backend: codex exec
+            Backend: \(backend.name)
+            Model: \(current) \(source)
 
             /model set <name> — switch model
-            /model reset — use codex default (\(codexDefault ?? "unknown"))
+            /model reset — use \(backend.name) default (\(backendDefault ?? "default"))
             """
         }
 
@@ -96,31 +97,11 @@ enum TelegramCommandHandler {
 
         case "reset":
             await GatewayRunner.currentModel.set(nil)
-            return "Model reset to codex default"
+            return "Model reset to \(backend.name) default (\(backendDefault ?? "default"))"
 
         default:
             return "Unknown: /model \(action)\nUse /model set <name> or /model reset"
         }
-    }
-
-    /// Read the default model from ~/.codex/config.toml
-    private static func readCodexDefaultModel() -> String? {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let path = "\(home)/.codex/config.toml"
-        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-        // Parse: model = "gpt-5.4"
-        for line in content.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("model") && trimmed.contains("=") {
-                let value = trimmed.split(separator: "=", maxSplits: 1).last?
-                    .trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                if let v = value, !v.isEmpty {
-                    return v
-                }
-            }
-        }
-        return nil
     }
 
     // MARK: - /status
@@ -129,13 +110,15 @@ enum TelegramCommandHandler {
         let uptime = ProcessInfo.processInfo.systemUptime
         let hours = Int(uptime) / 3600
         let minutes = (Int(uptime) % 3600) / 60
+        let backend = await GatewayRunner.activeBackend.get()
         let override = await GatewayRunner.currentModel.get()
-        let model = override ?? readCodexDefaultModel() ?? "unknown"
+        let model = override ?? backend.readDefaultModel() ?? "default"
 
         return """
         MacLaw Gateway v0.1.0
         PID: \(ProcessInfo.processInfo.processIdentifier)
         Uptime: \(hours)h \(minutes)m
+        Backend: \(backend.name)
         Model: \(model)
         Runtime: Swift + URLSession
         """
