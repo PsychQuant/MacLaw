@@ -27,10 +27,8 @@ actor SessionManager {
     /// Get the session ID for a chat, or nil if a new session should be started.
     func getSessionId(forChat chatId: String) -> String? {
         guard let session = sessions[chatId] else { return nil }
-        // Check timeout
-        if Date().timeIntervalSince(session.lastActivity) > timeoutSeconds {
-            return nil  // Expired — start fresh
-        }
+        // No timeout — codex manages its own context window.
+        // Use /reset to manually start a new session.
         return session.sessionId
     }
 

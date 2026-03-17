@@ -47,6 +47,17 @@ MacLaw does NOT maintain its own model list. Model discovery is delegated entire
 - `maclaw backend status` reads FROM the backend config, never duplicates it
 - `/model set <name>` is a runtime override only (not persisted), resets on restart
 
+### Session memory — let the AI manage it
+
+MacLaw maintains one persistent codex/claude session per Telegram chat. Sessions never expire automatically:
+- The backend CLI (codex/claude) manages its own context window, compaction, and memory
+- MacLaw does NOT impose timeouts, token limits, or automatic session rotation
+- Users control sessions via `/reset` (start fresh) — this is the only way to end a session
+- Session mapping (chatId → sessionId) is persisted in `~/.maclaw/sessions.json`
+- If the backend's session becomes too long, the backend handles compaction internally
+
+This follows the same principle as "delegate to CLI" — session/memory management is the backend's job, not MacLaw's.
+
 ### Backend as a swappable adapter
 
 MacLaw supports multiple LLM backends. Each backend is a CLI tool that MacLaw shells out to:
