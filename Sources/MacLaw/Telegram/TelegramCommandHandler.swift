@@ -4,15 +4,21 @@ import Foundation
 enum TelegramCommandHandler {
 
     static func handle(command: String, message: TGMessage, api: TelegramAPI) async -> String? {
-        // Strip bot mention: "/help@PsychQuantMacLaw_bot" → "help"
+        // Strip bot mention: "/help@PsychQuantMacLaw_bot" → "/help"
         let cleaned = command
             .trimmingCharacters(in: .whitespaces)
             .split(separator: "@").first.map(String.init) ?? command
 
-        switch cleaned {
+        // Handle multi-word commands: "/model set gpt-5.4"
+        let parts = cleaned.split(separator: " ", maxSplits: 2)
+        let cmd = String(parts[0])
+        let arg1 = parts.count > 1 ? String(parts[1]) : nil
+        let arg2 = parts.count > 2 ? String(parts[2]) : nil
+
+        switch cmd {
         case "/start":
             return """
-            👋 Hi! I'm MacLaw, a macOS-native AI assistant.
+            Hi! I'm MacLaw, a macOS-native AI assistant.
 
             I use Codex to answer your questions. Just send me a message!
 
@@ -25,24 +31,22 @@ enum TelegramCommandHandler {
 
             /start — Welcome message
             /help — Show this list
-            /status — Gateway status (uptime, version)
+            /status — Gateway status
             /ping — Quick health check
-            /model — Current LLM backend info
+            /model — Show current model
+            /model set <name> — Switch model (e.g., gpt-5.4, o3)
+            /model reset — Use codex default
             /whoami — Your Telegram user info
             """
 
         case "/ping":
-            return "pong 🏓"
+            return "pong"
 
         case "/status":
-            return buildStatus()
+            return await buildStatus()
 
         case "/model":
-            return """
-            LLM Backend: codex exec (OpenAI Codex CLI)
-            Auth: OAuth (via `codex --login`)
-            Mode: non-interactive, read-only sandbox
-            """
+            return await handleModel(arg1: arg1, arg2: arg2)
 
         case "/whoami":
             let user = message.from
@@ -57,29 +61,59 @@ enum TelegramCommandHandler {
             """
 
         default:
-            // Not a known command
-            if cleaned.hasPrefix("/") {
-                return "Unknown command: \(cleaned)\nType /help for available commands."
+            if cmd.hasPrefix("/") {
+                return "Unknown command: \(cmd)\nType /help for available commands."
             }
             return nil
         }
     }
 
-    private static func buildStatus() -> String {
+    // MARK: - /model
+
+    private static func handleModel(arg1: String?, arg2: String?) async -> String {
+        let current = await GatewayRunner.currentModel.get() ?? "(codex default)"
+
+        guard let action = arg1 else {
+            return """
+            Current model: \(current)
+            Backend: codex exec
+
+            /model set <name> — switch model
+            /model reset — use codex default
+            """
+        }
+
+        switch action {
+        case "set":
+            guard let newModel = arg2, !newModel.isEmpty else {
+                return "Usage: /model set <name>\nExample: /model set gpt-5.4"
+            }
+            await GatewayRunner.currentModel.set(newModel)
+            return "Model switched to: \(newModel)"
+
+        case "reset":
+            await GatewayRunner.currentModel.set(nil)
+            return "Model reset to codex default"
+
+        default:
+            return "Unknown: /model \(action)\nUse /model set <name> or /model reset"
+        }
+    }
+
+    // MARK: - /status
+
+    private static func buildStatus() async -> String {
         let uptime = ProcessInfo.processInfo.systemUptime
         let hours = Int(uptime) / 3600
         let minutes = (Int(uptime) % 3600) / 60
-
-        let version = "0.1.0"
-        let pid = ProcessInfo.processInfo.processIdentifier
+        let model = await GatewayRunner.currentModel.get() ?? "(codex default)"
 
         return """
-        MacLaw Gateway
-        Version: \(version)
-        PID: \(pid)
-        Process uptime: \(hours)h \(minutes)m
-        Runtime: macOS-native (Swift + URLSession)
-        LLM: codex exec
+        MacLaw Gateway v0.1.0
+        PID: \(ProcessInfo.processInfo.processIdentifier)
+        Uptime: \(hours)h \(minutes)m
+        Model: \(model)
+        Runtime: Swift + URLSession
         """
     }
 }

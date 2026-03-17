@@ -2,6 +2,8 @@ import Foundation
 
 /// Orchestrates all MacLaw services: Telegram + Codex CLI + Cron.
 actor GatewayRunner {
+    /// Current model — can be changed at runtime via /model set
+    static let currentModel = CurrentModel()
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
@@ -13,6 +15,12 @@ actor GatewayRunner {
 
     func run() async throws {
         log("MacLaw gateway starting...")
+
+        // 0. Set default model from config
+        if let model = config.model {
+            await GatewayRunner.currentModel.set(model)
+            log("Model: \(model)")
+        }
 
         // 1. Initialize Telegram
         guard let tgConfig = config.telegram else {
@@ -103,7 +111,8 @@ actor GatewayRunner {
         try? await api.sendChatAction(chatId: chatId)
 
         do {
-            let response = try await CodexCLI.run(prompt: text)
+            let model = await GatewayRunner.currentModel.get()
+            let response = try await CodexCLI.run(prompt: text, model: model)
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
             let errorMsg = "Sorry, I'm having trouble right now. Please try again later."

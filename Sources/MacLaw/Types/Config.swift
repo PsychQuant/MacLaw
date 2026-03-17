@@ -3,6 +3,8 @@ import Foundation
 struct MacLawConfig: Codable {
     var telegram: TelegramConfig?
     var cron: CronConfig?
+    /// Default model for codex exec (e.g., "gpt-5.4"). Nil = use codex default.
+    var model: String?
 }
 
 struct TelegramConfig: Codable {

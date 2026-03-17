@@ -9,7 +9,7 @@ enum CodexCLI {
         Just answer the user's question directly and concisely.
         """
 
-    static func run(prompt: String) async throws -> String {
+    static func run(prompt: String, model: String? = nil) async throws -> String {
         let outputFile = NSTemporaryDirectory() + "maclaw-codex-\(UUID().uuidString).txt"
         defer { try? FileManager.default.removeItem(atPath: outputFile) }
 
@@ -19,7 +19,7 @@ enum CodexCLI {
         let stderrPipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [
+        var args = [
             "codex", "exec",
             fullPrompt,
             "--sandbox", "read-only",
@@ -27,6 +27,10 @@ enum CodexCLI {
             "--ephemeral",
             "-o", outputFile,
         ]
+        if let model {
+            args += ["-m", model]
+        }
+        process.arguments = args
         process.standardOutput = FileHandle.nullDevice
         process.standardError = stderrPipe
 
