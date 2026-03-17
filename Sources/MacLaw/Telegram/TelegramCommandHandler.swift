@@ -36,6 +36,7 @@ enum TelegramCommandHandler {
             /model — Show current model
             /model set <name> — Switch model (e.g., gpt-5.4, o3)
             /model reset — Use codex default
+            /reset — Start a new conversation (clear session)
             /whoami — Your Telegram user info
             """
 
@@ -47,6 +48,11 @@ enum TelegramCommandHandler {
 
         case "/model":
             return await handleModel(arg1: arg1, arg2: arg2)
+
+        case "/reset":
+            let chatKey = String(message.chat.id)
+            await GatewayRunner.sessionManager.resetSession(forChat: chatKey)
+            return "Session cleared. Next message starts a fresh conversation."
 
         case "/whoami":
             let user = message.from

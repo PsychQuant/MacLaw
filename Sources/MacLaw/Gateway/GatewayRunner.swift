@@ -4,6 +4,7 @@ import Foundation
 actor GatewayRunner {
     static let currentModel = CurrentModel()
     static let activeBackend = ActiveBackend()
+    static let sessionManager = SessionManager()
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
@@ -106,7 +107,12 @@ actor GatewayRunner {
         do {
             let backend = await GatewayRunner.activeBackend.get()
             let model = await GatewayRunner.currentModel.get()
-            let response = try await backend.run(prompt: text, model: model)
+            let chatKey = String(chatId)
+            let existingSession = await GatewayRunner.sessionManager.getSessionId(forChat: chatKey)
+            let (response, newSessionId) = try await backend.run(prompt: text, model: model, sessionId: existingSession)
+            if let sid = newSessionId ?? existingSession {
+                await GatewayRunner.sessionManager.updateSession(chatId: chatKey, sessionId: sid)
+            }
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
             let errorMsg = "Sorry, I'm having trouble right now. Please try again later."
@@ -120,7 +126,7 @@ actor GatewayRunner {
     private static func executeCronJob(_ job: CronJobConfig, api: TelegramAPI) async -> Result<String, Error> {
         do {
             let backend = await GatewayRunner.activeBackend.get()
-            let response = try await backend.run(prompt: job.prompt, model: nil)
+            let (response, _) = try await backend.run(prompt: job.prompt, model: nil, sessionId: nil)
 
             if let chatIdStr = job.deliverTo, let chatId = Int64(chatIdStr) {
                 try await TelegramSender.send(api: api, chatId: chatId, text: "[\(job.name)]\n\n\(response)")

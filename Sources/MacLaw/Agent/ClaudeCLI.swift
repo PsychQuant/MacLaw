@@ -6,7 +6,7 @@ struct ClaudeBackend: Backend {
     let installHint = "brew install claude"
     let loginHint = "claude login"
 
-    func run(prompt: String, model: String? = nil) async throws -> String {
+    func run(prompt: String, model: String? = nil, sessionId: String? = nil) async throws -> (response: String, sessionId: String?) {
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -33,7 +33,8 @@ struct ClaudeBackend: Backend {
                 let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !stdout.isEmpty {
-                    continuation.resume(returning: stdout)
+                    // Claude CLI doesn't support session resume yet
+                    continuation.resume(returning: (stdout, nil))
                 } else {
                     let error = stderr.isEmpty ? "claude exited with status \(proc.terminationStatus)" : stderr
                     continuation.resume(throwing: BackendError.executionFailed(error))

@@ -5,8 +5,9 @@ protocol Backend: Sendable {
     var name: String { get }
     var cliName: String { get }
 
-    /// Run a prompt and return the response.
-    func run(prompt: String, model: String?) async throws -> String
+    /// Run a prompt and return (response, sessionId).
+    /// Pass sessionId to resume an existing session.
+    func run(prompt: String, model: String?, sessionId: String?) async throws -> (response: String, sessionId: String?)
 
     /// Read the default model from the backend's own config.
     func readDefaultModel() -> String?
