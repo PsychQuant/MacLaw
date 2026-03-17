@@ -1,111 +1,92 @@
 import Foundation
-import Security
 
 enum KeychainError: Error, LocalizedError {
-    case storeFailure(OSStatus)
     case notFound
-    case retrieveFailure(OSStatus)
-    case deleteFailure(OSStatus)
+    case commandFailed(String)
     case dataConversion
 
     var errorDescription: String? {
         switch self {
-        case .storeFailure(let status): "Keychain store failed: \(status)"
         case .notFound: "Secret not found in Keychain"
-        case .retrieveFailure(let status): "Keychain retrieve failed: \(status)"
-        case .deleteFailure(let status): "Keychain delete failed: \(status)"
+        case .commandFailed(let msg): "Keychain error: \(msg)"
         case .dataConversion: "Failed to convert Keychain data"
         }
     }
 }
 
+/// Keychain access via `security` CLI — avoids authorization prompts on unsigned binaries.
 enum KeychainManager {
     private static let serviceName = "maclaw"
 
     static func set(key: String, value: String) throws {
-        guard let data = value.data(using: .utf8) else {
-            throw KeychainError.dataConversion
-        }
-
-        // Delete existing item first (update pattern)
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key,
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.storeFailure(status)
+        // -U = update if exists, -s = service, -a = account, -w = password
+        let result = shell("security add-generic-password -s \(serviceName) -a \(key) -w \(shellEscape(value)) -U")
+        guard result.exitCode == 0 else {
+            throw KeychainError.commandFailed(result.stderr.isEmpty ? "exit \(result.exitCode)" : result.stderr)
         }
     }
 
     static func get(key: String) throws -> String {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status != errSecItemNotFound else {
-            throw KeychainError.notFound
+        // -w = print password only
+        let result = shell("security find-generic-password -s \(serviceName) -a \(key) -w")
+        guard result.exitCode == 0 else {
+            if result.stderr.contains("could not be found") || result.exitCode == 44 {
+                throw KeychainError.notFound
+            }
+            throw KeychainError.commandFailed(result.stderr.isEmpty ? "exit \(result.exitCode)" : result.stderr)
         }
-        guard status == errSecSuccess else {
-            throw KeychainError.retrieveFailure(status)
-        }
-        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
-            throw KeychainError.dataConversion
-        }
+        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { throw KeychainError.notFound }
         return value
     }
 
     static func delete(key: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key,
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.deleteFailure(status)
+        let result = shell("security delete-generic-password -s \(serviceName) -a \(key)")
+        // Exit 44 = not found, which is fine for delete
+        guard result.exitCode == 0 || result.exitCode == 44 else {
+            throw KeychainError.commandFailed(result.stderr)
         }
     }
 
     static func listKeys() throws -> [String] {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecReturnAttributes as String: true,
-            kSecMatchLimit as String: kSecMatchLimitAll,
-        ]
+        // Dump keychain and grep for our service name
+        let result = shell("security dump-keychain | grep -A4 'svce.*=.*\"\(serviceName)\"' | grep 'acct' | sed 's/.*=\"\\(.*\\)\"/\\1/'")
+        guard result.exitCode == 0 else { return [] }
+        return result.stdout
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
 
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+    // MARK: - Shell helpers
 
-        if status == errSecItemNotFound {
-            return []
+    private struct ShellResult {
+        let stdout: String
+        let stderr: String
+        let exitCode: Int32
+    }
+
+    private static func shell(_ command: String) -> ShellResult {
+        let process = Process()
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-c", command]
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return ShellResult(stdout: "", stderr: error.localizedDescription, exitCode: -1)
         }
-        guard status == errSecSuccess else {
-            throw KeychainError.retrieveFailure(status)
-        }
-        guard let items = result as? [[String: Any]] else {
-            return []
-        }
-        return items.compactMap { $0[kSecAttrAccount as String] as? String }.sorted()
+        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return ShellResult(stdout: stdout, stderr: stderr, exitCode: process.terminationStatus)
+    }
+
+    private static func shellEscape(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }
