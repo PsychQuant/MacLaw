@@ -3,6 +3,7 @@ import Foundation
 struct CodexBackend: Backend {
     let name = "codex"
     let cliName = "codex"
+    let installCommand = "brew install codex"
     let installHint = "brew install codex"
     let loginHint = "codex --login"
 

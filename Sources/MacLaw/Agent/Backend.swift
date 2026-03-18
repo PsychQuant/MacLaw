@@ -21,7 +21,10 @@ protocol Backend: Sendable {
     /// Check if the user is authenticated.
     func isAuthenticated() -> Bool
 
-    /// Install command hint.
+    /// Install command (shell command to run).
+    var installCommand: String { get }
+
+    /// Install command hint (human-readable).
     var installHint: String { get }
 
     /// Login command hint.

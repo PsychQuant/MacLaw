@@ -5,7 +5,7 @@ struct BackendCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "backend",
         abstract: "Manage the AI backend (codex or claude)",
-        subcommands: [BackendStatus.self, BackendSet.self, BackendLogin.self]
+        subcommands: [BackendStatus.self, BackendSet.self, BackendInstall.self, BackendLogin.self]
     )
 }
 
@@ -71,6 +71,52 @@ struct BackendSet: ParsableCommand {
         print("Backend set to: \(name)")
         if !backend.isInstalled() {
             print("⚠ \(backend.cliName) not installed. Run: \(backend.installHint)")
+        }
+    }
+}
+
+struct BackendInstall: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Install a backend CLI (codex or claude)"
+    )
+
+    @Argument(help: "Backend name: codex or claude")
+    var name: String
+
+    func run() throws {
+        guard let backend = (BackendRegistry.allNames.contains(name) ? BackendRegistry.resolve(name: name) : nil) else {
+            print("Unknown backend: \(name)")
+            print("Available: \(BackendRegistry.allNames.joined(separator: ", "))")
+            throw ExitCode.failure
+        }
+
+        if backend.isInstalled() {
+            print("\(backend.cliName) is already installed")
+            return
+        }
+
+        print("Installing \(backend.cliName)...")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-c", backend.installCommand]
+        process.standardInput = FileHandle.standardInput
+        process.standardOutput = FileHandle.standardOutput
+        process.standardError = FileHandle.standardError
+
+        var env = ProcessInfo.processInfo.environment
+        let home = env["HOME"] ?? ""
+        env["PATH"] = ["/usr/local/bin", "/opt/homebrew/bin", "\(home)/.local/bin", env["PATH"] ?? ""].joined(separator: ":")
+        process.environment = env
+
+        try process.run()
+        process.waitUntilExit()
+
+        if process.terminationStatus == 0 {
+            print("✓ \(backend.cliName) installed")
+        } else {
+            print("Install failed with status \(process.terminationStatus)")
+            throw ExitCode.failure
         }
     }
 }

@@ -64,8 +64,20 @@ MacLaw supports multiple LLM backends. Each backend is a CLI tool that MacLaw sh
 
 | Backend | CLI | Non-interactive | Install | Login |
 |---------|-----|-----------------|---------|-------|
-| codex | `codex exec "prompt" -o file` | Yes | `brew install codex` | `codex --login` |
-| claude | `claude -p "prompt" --output-format text` | Yes | `brew install claude` | `claude login` |
+| codex | `codex exec "prompt" --full-auto` | Yes | `brew install codex` | `codex --login` |
+| claude | `claude -p "prompt" --output-format json` | Yes | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude login` |
+
+### Separation of concerns: setup vs backend
+
+Backend installation and MacLaw setup are **independent operations**:
+- `maclaw backend install <name>` — install/update a backend CLI. Checks `which` first, skips if already installed.
+- `maclaw backend login` — run the backend's login flow
+- `maclaw setup` — configure MacLaw itself (Telegram token, daemon). Does NOT install or configure backends.
+
+This separation prevents:
+- Unnecessary re-downloads (check before install)
+- Account lockouts from repeated auth flows
+- Coupling MacLaw setup with backend lifecycles
 
 Config (`~/.maclaw/maclaw.json`):
 ```json

@@ -3,7 +3,8 @@ import Foundation
 struct ClaudeBackend: Backend {
     let name = "claude"
     let cliName = "claude"
-    let installHint = "brew install claude"
+    let installCommand = "curl -fsSL https://claude.ai/install.sh | bash"
+    let installHint = "curl -fsSL https://claude.ai/install.sh | bash"
     let loginHint = "claude login"
 
     func run(prompt: String, model: String? = nil, sessionId: String? = nil) async throws -> (response: String, sessionId: String?) {
