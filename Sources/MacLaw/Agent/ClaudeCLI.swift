@@ -18,9 +18,11 @@ struct ClaudeBackend: Backend {
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = URL(fileURLWithPath: "\(FileManager.default.homeDirectoryForCurrentUser.path)/.maclaw/workspace")
-        var args = ["claude", "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
+        var args = ["claude", "-p", prompt, "--output-format", "json"]
         if let tools = allowedTools, !tools.isEmpty {
-            args += ["--allowedTools", tools.joined(separator: ",")]
+            for tool in tools {
+                args += ["--allowedTools", tool]
+            }
         }
         if let sid = sessionId {
             args += ["--resume", sid]
