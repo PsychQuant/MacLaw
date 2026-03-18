@@ -70,7 +70,7 @@ struct BackendSet: ParsableCommand {
         let backend = BackendRegistry.resolve(name: name)
         print("Backend set to: \(name)")
         if !backend.isInstalled() {
-            print("⚠ \(backend.cliName) not installed. Run: \(backend.installHint)")
+            print("⚠ \(backend.cliName) not installed. Run: maclaw backend install \(name)")
         }
     }
 }

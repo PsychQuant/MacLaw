@@ -17,9 +17,10 @@ actor GatewayRunner {
     func run() async throws {
         log("MacLaw gateway starting...")
 
-        // 0. Resolve backend
+        // 0. Resolve backend + load sessions for this backend
         let backend = BackendRegistry.resolve(name: config.backend)
         await GatewayRunner.activeBackend.set(backend)
+        await GatewayRunner.sessionManager.loadForBackend(backend.name)
         log("Backend: \(backend.name)")
         if let model = backend.readDefaultModel() {
             log("Model: \(model)")
