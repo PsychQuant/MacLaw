@@ -22,8 +22,12 @@ struct SetupCommand: ParsableCommand {
             }
         }
 
-        // Step 1: Check codex CLI
-        print("1. Checking codex CLI...")
+        // Step 1: macOS permissions
+        print("1. Checking macOS permissions...")
+        let _ = PermissionChecker.runSetupCheck()
+
+        // Step 2: Check codex CLI
+        print("\n2. Checking codex CLI...")
         let codexCheck = shell("which codex")
         if codexCheck.isEmpty {
             print("   ✗ codex not found. Install it:")
@@ -42,8 +46,8 @@ struct SetupCommand: ParsableCommand {
         }
         print("   ✓ codex authenticated")
 
-        // Step 2: Telegram bot token
-        print("\n2. Telegram bot token")
+        // Step 3: Telegram bot token
+        print("\n3. Telegram bot token")
         let existingToken = try? KeychainManager.get(key: "telegram-bot-token")
         if existingToken != nil {
             print("   Token already stored in Keychain.")
@@ -57,8 +61,8 @@ struct SetupCommand: ParsableCommand {
             try promptAndStoreToken()
         }
 
-        // Step 3: Generate config
-        print("\n3. Generating config...")
+        // Step 4: Generate config
+        print("\n4. Generating config...")
         try ConfigLoader.ensureConfigDir()
         let configPath = ConfigLoader.configPath
         let config = """
@@ -71,8 +75,8 @@ struct SetupCommand: ParsableCommand {
         try config.write(toFile: configPath, atomically: true, encoding: .utf8)
         print("   ✓ Config written to \(configPath)")
 
-        // Step 4: launchd daemon
-        print("\n4. Install launchd daemon?")
+        // Step 5: launchd daemon
+        print("\n5. Install launchd daemon?")
         print("   This will auto-start MacLaw on login and restart on crash.")
         print("   Install? (y/n): ", terminator: "")
         if readLine()?.lowercased() == "y" {
