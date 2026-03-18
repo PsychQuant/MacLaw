@@ -151,3 +151,38 @@ ssh <host> "launchctl kickstart -k gui/501/ai.psychquant.maclaw"
 
 - swift-argument-parser 1.3+ (CLI only)
 - No other external Swift packages
+
+## Skill Design References
+
+When designing MacLaw's Telegram command skills or interactive workflows, reference these existing projects:
+
+### Telegram chatbot skills (martingale)
+
+Location: `/Users/che/Developer/martingale/.claude/skills/`
+
+| Skill | Pattern |
+|-------|---------|
+| `hardy-inbox` | Telegram → GitHub Issue pipeline（自動檢查群組訊息、分析、建 issue） |
+| `hardy-review` | 對話式 code review |
+| `jra-scraper` | 資料抓取 + 結構化輸出 |
+
+Key patterns to learn:
+- SKILL.md frontmatter with `tools:` declaration for MCP tool access
+- Telegram group message monitoring + automated response
+- Session start hook 自動觸發 skill
+
+### Interactive structured skills (0911_Wu)
+
+Location: `/Users/che/Library/CloudStorage/Dropbox/che_workspace/teaching/2025/0911_Wu/.claude/skills/`
+
+| Skill | Pattern |
+|-------|---------|
+| `control-change-classifier` | 結構化分類任務，嚴格品質控制，`disable-model-invocation: true` |
+| `family-relationship-filler` | 互動式資料填充，逐筆處理 |
+| `family-lookup` | 查詢式 skill |
+
+Key patterns to learn:
+- `disable-model-invocation: true` — skill 不自動觸發，只能手動呼叫
+- `argument-hint:` — 告訴使用者怎麼傳參數
+- 嚴格的品質 guardrails（禁止批量、強制逐筆處理）
+- 互動式 Claude session 中載入 skill 的方式
