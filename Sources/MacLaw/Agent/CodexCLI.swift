@@ -19,10 +19,10 @@ struct CodexBackend: Backend {
         var args: [String]
         if let sid = sessionId {
             args = ["codex", "exec", "resume", sid, prompt,
-                    "-o", outputFile, "--skip-git-repo-check", "--json"]
+                    "-o", outputFile, "--skip-git-repo-check", "--full-auto", "--json"]
         } else {
             args = ["codex", "exec", prompt,
-                    "--sandbox", "read-only", "--skip-git-repo-check",
+                    "--full-auto", "--skip-git-repo-check",
                     "-o", outputFile, "--json"]
         }
         if let model {
