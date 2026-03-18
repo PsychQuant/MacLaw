@@ -15,38 +15,39 @@ enum TelegramCommandHandler {
         let arg1 = parts.count > 1 ? String(parts[1]) : nil
         let arg2 = parts.count > 2 ? String(parts[2]) : nil
 
-        switch cmd {
+        // Normalize common typos/aliases
+        let normalized = Self.normalizeCommand(cmd)
+
+        switch normalized {
         case "/start":
             return """
             Hi! I'm MacLaw, a macOS-native AI assistant.
 
-            I use Codex to answer your questions. Just send me a message!
+            Just send me a message!
 
             Type /help to see available commands.
             """
 
-        case "/help":
+        case "/help", "/h":
             return """
             Available commands:
 
-            /start — Welcome message
             /help — Show this list
             /status — Gateway status
             /ping — Quick health check
             /model — Show current model
-            /model set <name> — Switch model (e.g., gpt-5.4, o3)
-            /model reset — Use codex default
-            /permissions — Show current permission mode
-            /permissions safe — Whitelist only
-            /permissions full — Full access (dangerous)
-            /reset — Start a new conversation (clear session)
-            /whoami — Your Telegram user info
+            /model set <name> — Switch model
+            /model reset — Use default
+            /permissions — Show permission mode
+            /permissions safe|full — Toggle
+            /reset — Clear session
+            /whoami — Your Telegram info
             """
 
         case "/ping":
             return "pong"
 
-        case "/status":
+        case "/status", "/stat":
             return await buildStatus()
 
         case "/model":
@@ -55,12 +56,12 @@ enum TelegramCommandHandler {
         case "/permissions":
             return await handlePermissions(arg1: arg1)
 
-        case "/reset":
+        case "/reset", "/clear", "/new":
             let chatKey = String(message.chat.id)
             await GatewayRunner.sessionManager.resetSession(forChat: chatKey)
             return "Session cleared. Next message starts a fresh conversation."
 
-        case "/whoami":
+        case "/whoami", "/who":
             let user = message.from
             let name = user?.displayName ?? "Unknown"
             let id = user?.id.description ?? "?"
@@ -73,7 +74,7 @@ enum TelegramCommandHandler {
             """
 
         default:
-            if cmd.hasPrefix("/") {
+            if normalized.hasPrefix("/") {
                 return "Unknown command: \(cmd)\nType /help for available commands."
             }
             return nil
@@ -156,6 +157,25 @@ enum TelegramCommandHandler {
         default:
             return "Unknown: /permissions \(action)\nUse: safe or full"
         }
+    }
+
+    // MARK: - Command normalization
+
+    /// Maps common typos and aliases to canonical command names.
+    private static let aliases: [String: String] = [
+        "/permission": "/permissions",
+        "/perm": "/permissions",
+        "/perms": "/permissions",
+        "/stat": "/status",
+        "/stats": "/status",
+        "/clear": "/reset",
+        "/new": "/reset",
+        "/who": "/whoami",
+        "/h": "/help",
+    ]
+
+    private static func normalizeCommand(_ cmd: String) -> String {
+        aliases[cmd.lowercased()] ?? cmd.lowercased()
     }
 
     // MARK: - /status

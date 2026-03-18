@@ -55,14 +55,16 @@ struct ClaudeBackend: Backend {
 
                 let parsed = Self.parseOutput(stdout, isGroupChat: isGroupChat)
 
-                if parsed.shouldRespond, let text = parsed.response, !text.isEmpty {
-                    continuation.resume(returning: (text, parsed.sessionId, true))
-                } else if !parsed.shouldRespond {
-                    // AI decided not to respond
+                if !parsed.shouldRespond {
+                    // AI decided not to respond (group chat structured output)
                     continuation.resume(returning: (nil, parsed.sessionId, false))
-                } else {
+                } else if proc.terminationStatus != 0 && (parsed.response == nil || parsed.response!.isEmpty) {
+                    // Non-zero exit with no output = real error
                     let error = stderr.isEmpty ? "claude exited with status \(proc.terminationStatus)" : stderr
                     continuation.resume(throwing: BackendError.executionFailed(error))
+                } else {
+                    // Normal response (may be empty — that's OK, not an error)
+                    continuation.resume(returning: (parsed.response, parsed.sessionId, true))
                 }
             }
             do {
