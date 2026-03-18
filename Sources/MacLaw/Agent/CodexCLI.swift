@@ -6,32 +6,22 @@ struct CodexBackend: Backend {
     let installHint = "brew install codex"
     let loginHint = "codex --login"
 
-    private let systemPrompt = """
-        You are a helpful AI assistant running as a Telegram chatbot called MacLaw. \
-        Respond conversationally in the user's language. \
-        Do NOT read files, run commands, or act as a code agent. \
-        Just answer the user's question directly and concisely.
-        """
-
     func run(prompt: String, model: String? = nil, sessionId: String? = nil) async throws -> (response: String, sessionId: String?) {
         let outputFile = NSTemporaryDirectory() + "maclaw-codex-\(UUID().uuidString).txt"
         defer { try? FileManager.default.removeItem(atPath: outputFile) }
 
         let process = Process()
-        let stdoutPipe = Pipe()  // Need stdout for --json to get thread_id
+        let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
 
         var args: [String]
         if let sid = sessionId {
-            // Resume existing session
             args = ["codex", "exec", "resume", sid, prompt,
                     "-o", outputFile, "--skip-git-repo-check", "--json"]
         } else {
-            // New session
-            let fullPrompt = "\(systemPrompt)\n\nUser message: \(prompt)"
-            args = ["codex", "exec", fullPrompt,
+            args = ["codex", "exec", prompt,
                     "--sandbox", "read-only", "--skip-git-repo-check",
                     "-o", outputFile, "--json"]
         }
