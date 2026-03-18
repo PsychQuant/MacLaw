@@ -117,9 +117,11 @@ actor GatewayRunner {
             let chatKey = String(chatId)
             let isGroup = message.chat.type != "private"
             let existingSession = await GatewayRunner.sessionManager.getSessionId(forChat: chatKey)
+            // Group: include sender name so AI knows who's talking
+            let prompt = isGroup ? "\(senderName): \(text)" : text
             print("[\(ts)] [gateway] Calling backend (group=\(isGroup), session=\(existingSession ?? "new"))")
             let (response, newSessionId, shouldRespond) = try await backend.run(
-                prompt: text, model: model, sessionId: existingSession, isGroupChat: isGroup
+                prompt: prompt, model: model, sessionId: existingSession, isGroupChat: isGroup
             )
             typingTask.cancel()
             print("[\(ts)] [gateway] Backend returned: shouldRespond=\(shouldRespond), hasResponse=\(response != nil), sessionId=\(newSessionId ?? "nil")")
