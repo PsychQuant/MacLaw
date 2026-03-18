@@ -49,11 +49,22 @@ struct ClaudeBackend: Backend {
     }
 
     func readDefaultModel() -> String? {
+        readConfigSummary()["model"]
+    }
+
+    func readConfigSummary() -> [String: String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: "\(home)/.claude/settings.json")),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let model = json["model"] as? String else { return nil }
-        return model
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        var result: [String: String] = [:]
+        for (key, value) in json {
+            if let str = value as? String {
+                result[key] = str
+            } else if let bool = value as? Bool {
+                result[key] = bool ? "true" : "false"
+            }
+        }
+        return result
     }
 
     func isAuthenticated() -> Bool {

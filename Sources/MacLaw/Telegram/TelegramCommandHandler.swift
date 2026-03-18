@@ -79,18 +79,29 @@ enum TelegramCommandHandler {
     private static func handleModel(arg1: String?, arg2: String?) async -> String {
         let backend = await GatewayRunner.activeBackend.get()
         let override = await GatewayRunner.currentModel.get()
-        let backendDefault = backend.readDefaultModel()
+        let config = backend.readConfigSummary()
+        let backendDefault = config["model"]
         let current = override ?? backendDefault ?? "default"
         let source = override != nil ? "(override)" : "(from \(backend.name) config)"
 
         guard let action = arg1 else {
-            return """
-            Backend: \(backend.name)
-            Model: \(current) \(source)
-
-            /model set <name> — switch model
-            /model reset — use \(backend.name) default (\(backendDefault ?? "default"))
-            """
+            // Build full config display
+            var lines = [
+                "Backend: \(backend.name)",
+                "Model: \(current) \(source)",
+            ]
+            // Show all other config values
+            let skipKeys: Set<String> = ["model"]
+            for (key, value) in config.sorted(by: { $0.key < $1.key }) {
+                if !skipKeys.contains(key) {
+                    let displayKey = key.replacingOccurrences(of: "_", with: " ")
+                    lines.append("\(displayKey): \(value)")
+                }
+            }
+            lines.append("")
+            lines.append("/model set <name> — switch model")
+            lines.append("/model reset — use \(backend.name) default")
+            return lines.joined(separator: "\n")
         }
 
         switch action {

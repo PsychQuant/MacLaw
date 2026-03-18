@@ -89,17 +89,27 @@ struct CodexBackend: Backend {
     }
 
     func readDefaultModel() -> String? {
+        readConfigSummary()["model"]
+    }
+
+    func readConfigSummary() -> [String: String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        guard let content = try? String(contentsOfFile: "\(home)/.codex/config.toml", encoding: .utf8) else { return nil }
+        guard let content = try? String(contentsOfFile: "\(home)/.codex/config.toml", encoding: .utf8) else { return [:] }
+
+        var result: [String: String] = [:]
+        // Parse top-level key = "value" lines (before any [section])
         for line in content.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("model") && !trimmed.hasPrefix("model_") && trimmed.contains("=") {
-                return trimmed.split(separator: "=", maxSplits: 1).last?
-                    .trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-            }
+            if trimmed.hasPrefix("[") { break }  // Stop at first section
+            guard trimmed.contains("=") else { continue }
+            let parts = trimmed.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            let key = parts[0].trimmingCharacters(in: .whitespaces)
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            result[key] = value
         }
-        return nil
+        return result
     }
 
     func isAuthenticated() -> Bool {

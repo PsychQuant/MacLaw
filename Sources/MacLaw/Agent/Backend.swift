@@ -12,6 +12,9 @@ protocol Backend: Sendable {
     /// Read the default model from the backend's own config.
     func readDefaultModel() -> String?
 
+    /// Read full config status (model, effort, sandbox, etc.)
+    func readConfigSummary() -> [String: String]
+
     /// Check if the CLI is installed.
     func isInstalled() -> Bool
 
