@@ -17,6 +17,7 @@ struct ClaudeBackend: Backend {
         let stderrPipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = URL(fileURLWithPath: "\(FileManager.default.homeDirectoryForCurrentUser.path)/.maclaw/workspace")
         var args = ["claude", "-p", prompt, "--output-format", "json"]
         if let sid = sessionId {
             args += ["--resume", sid]

@@ -28,6 +28,7 @@ struct CodexBackend: Backend {
         let stderrPipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = URL(fileURLWithPath: "\(FileManager.default.homeDirectoryForCurrentUser.path)/.maclaw/workspace")
 
         var args: [String]
         if let sid = sessionId {
