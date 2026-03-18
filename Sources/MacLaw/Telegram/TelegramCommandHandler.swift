@@ -36,6 +36,9 @@ enum TelegramCommandHandler {
             /model — Show current model
             /model set <name> — Switch model (e.g., gpt-5.4, o3)
             /model reset — Use codex default
+            /permissions — Show current permission mode
+            /permissions safe — Whitelist only
+            /permissions full — Full access (dangerous)
             /reset — Start a new conversation (clear session)
             /whoami — Your Telegram user info
             """
@@ -48,6 +51,9 @@ enum TelegramCommandHandler {
 
         case "/model":
             return await handleModel(arg1: arg1, arg2: arg2)
+
+        case "/permissions":
+            return await handlePermissions(arg1: arg1)
 
         case "/reset":
             let chatKey = String(message.chat.id)
@@ -118,6 +124,37 @@ enum TelegramCommandHandler {
 
         default:
             return "Unknown: /model \(action)\nUse /model set <name> or /model reset"
+        }
+    }
+
+    // MARK: - /permissions
+
+    private static func handlePermissions(arg1: String?) async -> String {
+        let current = await GatewayRunner.permissionMode.get()
+
+        guard let action = arg1 else {
+            let tools = GatewayRunner.configuredAllowedTools ?? []
+            let toolList = tools.isEmpty ? "(none)" : tools.joined(separator: ", ")
+            return """
+            Permission mode: \(current)
+
+            safe — whitelist only: \(toolList)
+            full — all tools, no restrictions
+
+            /permissions safe
+            /permissions full
+            """
+        }
+
+        switch action {
+        case "safe":
+            await GatewayRunner.permissionMode.set("safe")
+            return "Permissions: safe (whitelist only)"
+        case "full":
+            await GatewayRunner.permissionMode.set("full")
+            return "⚠️ Permissions: full (all tools, no restrictions)\nUse /permissions safe to switch back."
+        default:
+            return "Unknown: /permissions \(action)\nUse: safe or full"
         }
     }
 

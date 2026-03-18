@@ -23,6 +23,9 @@ struct ClaudeBackend: Backend {
             for tool in tools {
                 args += ["--allowedTools", tool]
             }
+        } else if allowedTools == nil {
+            // Full mode — no restrictions
+            args += ["--dangerously-skip-permissions"]
         }
         if let sid = sessionId {
             args += ["--resume", sid]

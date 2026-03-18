@@ -5,6 +5,7 @@ actor GatewayRunner {
     static let currentModel = CurrentModel()
     static let activeBackend = ActiveBackend()
     static let sessionManager = SessionManager()
+    static let permissionMode = PermissionMode()
     nonisolated(unsafe) static var configuredAllowedTools: [String]?
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
@@ -122,9 +123,11 @@ actor GatewayRunner {
             // Group: include sender name so AI knows who's talking
             let prompt = isGroup ? "\(senderName): \(text)" : text
             print("[\(ts)] [gateway] Calling backend (group=\(isGroup), session=\(existingSession ?? "new"))")
+            let mode = await GatewayRunner.permissionMode.get()
+            let tools: [String]? = mode == "full" ? nil : GatewayRunner.configuredAllowedTools
             let (response, newSessionId, shouldRespond) = try await backend.run(
                 prompt: prompt, model: model, sessionId: existingSession, isGroupChat: isGroup,
-                allowedTools: GatewayRunner.configuredAllowedTools
+                allowedTools: tools
             )
             typingTask.cancel()
             print("[\(ts)] [gateway] Backend returned: shouldRespond=\(shouldRespond), hasResponse=\(response != nil), sessionId=\(newSessionId ?? "nil")")
