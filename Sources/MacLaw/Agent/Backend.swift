@@ -5,9 +5,10 @@ protocol Backend: Sendable {
     var name: String { get }
     var cliName: String { get }
 
-    /// Run a prompt and return (response, sessionId).
-    /// Pass sessionId to resume an existing session.
-    func run(prompt: String, model: String?, sessionId: String?) async throws -> (response: String, sessionId: String?)
+    /// Run a prompt and return result.
+    /// - isGroupChat: when true, backend uses structured output to decide whether to respond
+    /// - sessionId: pass to resume an existing session
+    func run(prompt: String, model: String?, sessionId: String?, isGroupChat: Bool) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool)
 
     /// Read the default model from the backend's own config.
     func readDefaultModel() -> String?

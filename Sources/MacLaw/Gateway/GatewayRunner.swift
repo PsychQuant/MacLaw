@@ -115,11 +115,17 @@ actor GatewayRunner {
             let backend = await GatewayRunner.activeBackend.get()
             let model = await GatewayRunner.currentModel.get()
             let chatKey = String(chatId)
+            let isGroup = message.chat.type != "private"
             let existingSession = await GatewayRunner.sessionManager.getSessionId(forChat: chatKey)
-            let (response, newSessionId) = try await backend.run(prompt: text, model: model, sessionId: existingSession)
+            let (response, newSessionId, shouldRespond) = try await backend.run(
+                prompt: text, model: model, sessionId: existingSession, isGroupChat: isGroup
+            )
             typingTask.cancel()
             if let sid = newSessionId ?? existingSession {
                 await GatewayRunner.sessionManager.updateSession(chatId: chatKey, sessionId: sid)
+            }
+            guard shouldRespond, let response, !response.isEmpty else {
+                return  // AI decided not to respond
             }
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
@@ -135,13 +141,14 @@ actor GatewayRunner {
     private static func executeCronJob(_ job: CronJobConfig, api: TelegramAPI) async -> Result<String, Error> {
         do {
             let backend = await GatewayRunner.activeBackend.get()
-            let (response, _) = try await backend.run(prompt: job.prompt, model: nil, sessionId: nil)
+            let (response, _, _) = try await backend.run(prompt: job.prompt, model: nil, sessionId: nil, isGroupChat: false)
+            let text = response ?? ""
 
             if let chatIdStr = job.deliverTo, let chatId = Int64(chatIdStr) {
-                try await TelegramSender.send(api: api, chatId: chatId, text: "[\(job.name)]\n\n\(response)")
+                try await TelegramSender.send(api: api, chatId: chatId, text: "[\(job.name)]\n\n\(text)")
             }
 
-            return .success(response)
+            return .success(text)
         } catch {
             return .failure(error)
         }

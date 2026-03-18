@@ -79,7 +79,7 @@ enum AccessControl {
             return .allowed
         }
 
-        // Otherwise → not talking to the bot, ignore
-        return .ignored
+        // All other messages → send to AI, let it decide via structured output
+        return .allowed
     }
 }

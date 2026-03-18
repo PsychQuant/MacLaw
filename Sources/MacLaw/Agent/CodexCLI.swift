@@ -7,9 +7,21 @@ struct CodexBackend: Backend {
     let installHint = "brew install codex"
     let loginHint = "codex --login"
 
-    func run(prompt: String, model: String? = nil, sessionId: String? = nil) async throws -> (response: String, sessionId: String?) {
+    func run(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool) {
         let outputFile = NSTemporaryDirectory() + "maclaw-codex-\(UUID().uuidString).txt"
         defer { try? FileManager.default.removeItem(atPath: outputFile) }
+
+        // For group chat, write a schema file for --output-schema
+        var schemaFile: String?
+        if isGroupChat {
+            let schema = """
+            {"type":"object","properties":{"shouldRespond":{"type":"boolean"},"response":{"type":"string"}},"required":["shouldRespond"]}
+            """
+            let path = NSTemporaryDirectory() + "maclaw-schema-\(UUID().uuidString).json"
+            try schema.write(toFile: path, atomically: true, encoding: .utf8)
+            schemaFile = path
+        }
+        defer { if let sf = schemaFile { try? FileManager.default.removeItem(atPath: sf) } }
 
         let process = Process()
         let stdoutPipe = Pipe()
@@ -28,6 +40,9 @@ struct CodexBackend: Backend {
         }
         if let model {
             args += ["-m", model]
+        }
+        if let sf = schemaFile {
+            args += ["--output-schema", sf]
         }
         process.arguments = args
         process.standardOutput = stdoutPipe
@@ -48,11 +63,14 @@ struct CodexBackend: Backend {
                 let output = (try? String(contentsOfFile: outputFile, encoding: .utf8))?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-                // Extract thread_id from JSON stdout
                 let threadId = Self.extractThreadId(from: stdout)
 
-                if !output.isEmpty {
-                    continuation.resume(returning: (output, threadId))
+                if isGroupChat {
+                    // Parse structured output from the output file
+                    let parsed = Self.parseGroupOutput(output)
+                    continuation.resume(returning: (parsed.response, threadId, parsed.shouldRespond))
+                } else if !output.isEmpty {
+                    continuation.resume(returning: (output, threadId, true))
                 } else {
                     let error = stderr.isEmpty ? "codex exited with status \(proc.terminationStatus)" : stderr
                     continuation.resume(throwing: BackendError.executionFailed(error))
@@ -66,8 +84,18 @@ struct CodexBackend: Backend {
         }
     }
 
+    private static func parseGroupOutput(_ output: String) -> (response: String?, shouldRespond: Bool) {
+        guard let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            // Not JSON — treat as plain text response
+            return (output.isEmpty ? nil : output, true)
+        }
+        let shouldRespond = json["shouldRespond"] as? Bool ?? true
+        let response = json["response"] as? String
+        return (response, shouldRespond)
+    }
+
     private static func extractThreadId(from jsonLines: String) -> String? {
-        // Look for: {"type":"thread.started","thread_id":"UUID"}
         for line in jsonLines.components(separatedBy: .newlines) {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -86,12 +114,10 @@ struct CodexBackend: Backend {
     func readConfigSummary() -> [String: String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         guard let content = try? String(contentsOfFile: "\(home)/.codex/config.toml", encoding: .utf8) else { return [:] }
-
         var result: [String: String] = [:]
-        // Parse top-level key = "value" lines (before any [section])
         for line in content.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") { break }  // Stop at first section
+            if trimmed.hasPrefix("[") { break }
             guard trimmed.contains("=") else { continue }
             let parts = trimmed.split(separator: "=", maxSplits: 1)
             guard parts.count == 2 else { continue }

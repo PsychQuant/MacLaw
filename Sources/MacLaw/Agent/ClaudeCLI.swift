@@ -7,7 +7,11 @@ struct ClaudeBackend: Backend {
     let installHint = "curl -fsSL https://claude.ai/install.sh | bash"
     let loginHint = "claude login"
 
-    func run(prompt: String, model: String? = nil, sessionId: String? = nil) async throws -> (response: String, sessionId: String?) {
+    private static let groupSchema = """
+    {"type":"object","properties":{"shouldRespond":{"type":"boolean"},"response":{"type":"string"}},"required":["shouldRespond"]}
+    """
+
+    func run(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool) {
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -19,6 +23,9 @@ struct ClaudeBackend: Backend {
         }
         if let model {
             args += ["--model", model]
+        }
+        if isGroupChat {
+            args += ["--json-schema", Self.groupSchema]
         }
         process.arguments = args
         process.standardOutput = stdoutPipe
@@ -37,11 +44,13 @@ struct ClaudeBackend: Backend {
                 let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-                // Parse JSON output to get session_id and result text
-                let (text, newSessionId) = Self.parseJsonOutput(stdout)
+                let parsed = Self.parseOutput(stdout, isGroupChat: isGroupChat)
 
-                if let text, !text.isEmpty {
-                    continuation.resume(returning: (text, newSessionId))
+                if parsed.shouldRespond, let text = parsed.response, !text.isEmpty {
+                    continuation.resume(returning: (text, parsed.sessionId, true))
+                } else if !parsed.shouldRespond {
+                    // AI decided not to respond
+                    continuation.resume(returning: (nil, parsed.sessionId, false))
                 } else {
                     let error = stderr.isEmpty ? "claude exited with status \(proc.terminationStatus)" : stderr
                     continuation.resume(throwing: BackendError.executionFailed(error))
@@ -55,17 +64,23 @@ struct ClaudeBackend: Backend {
         }
     }
 
-    /// Parse claude -p --output-format json output.
-    /// Format: {"type":"result","subtype":"success","session_id":"uuid","result":"text",...}
-    private static func parseJsonOutput(_ output: String) -> (text: String?, sessionId: String?) {
+    private static func parseOutput(_ output: String, isGroupChat: Bool) -> (response: String?, sessionId: String?, shouldRespond: Bool) {
         guard let data = output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            // Fallback: treat as plain text
-            return (output.isEmpty ? nil : output, nil)
+            return (output.isEmpty ? nil : output, nil, true)
         }
-        let text = json["result"] as? String
+
         let sessionId = json["session_id"] as? String
-        return (text, sessionId)
+
+        if isGroupChat, let structured = json["structured_output"] as? [String: Any] {
+            let shouldRespond = structured["shouldRespond"] as? Bool ?? true
+            let response = structured["response"] as? String
+            return (response, sessionId, shouldRespond)
+        }
+
+        // Non-group or no structured output: use result field
+        let text = json["result"] as? String
+        return (text, sessionId, true)
     }
 
     func readDefaultModel() -> String? {
