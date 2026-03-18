@@ -7,7 +7,7 @@ struct CodexBackend: Backend {
     let installHint = "brew install codex"
     let loginHint = "codex --login"
 
-    func run(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool) {
+    func run(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false, allowedTools: [String]? = nil) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool) {
         let outputFile = NSTemporaryDirectory() + "maclaw-codex-\(UUID().uuidString).txt"
         defer { try? FileManager.default.removeItem(atPath: outputFile) }
 

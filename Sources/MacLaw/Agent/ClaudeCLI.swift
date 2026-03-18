@@ -11,14 +11,17 @@ struct ClaudeBackend: Backend {
     {"type":"object","properties":{"shouldRespond":{"type":"boolean"},"response":{"type":"string"}},"required":["shouldRespond"]}
     """
 
-    func run(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool) {
+    func run(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false, allowedTools: [String]? = nil) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool) {
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = URL(fileURLWithPath: "\(FileManager.default.homeDirectoryForCurrentUser.path)/.maclaw/workspace")
-        var args = ["claude", "-p", prompt, "--output-format", "json", "--allowedTools", "WebSearch,WebFetch"]
+        var args = ["claude", "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
+        if let tools = allowedTools, !tools.isEmpty {
+            args += ["--allowedTools", tools.joined(separator: ",")]
+        }
         if let sid = sessionId {
             args += ["--resume", sid]
         }

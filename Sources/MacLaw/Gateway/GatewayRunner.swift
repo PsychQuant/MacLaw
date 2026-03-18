@@ -5,6 +5,7 @@ actor GatewayRunner {
     static let currentModel = CurrentModel()
     static let activeBackend = ActiveBackend()
     static let sessionManager = SessionManager()
+    nonisolated(unsafe) static var configuredAllowedTools: [String]?
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
@@ -21,6 +22,7 @@ actor GatewayRunner {
         let backend = BackendRegistry.resolve(name: config.backend)
         await GatewayRunner.activeBackend.set(backend)
         await GatewayRunner.sessionManager.loadForBackend(backend.name)
+        GatewayRunner.configuredAllowedTools = config.allowedTools
         log("Backend: \(backend.name)")
         if let model = backend.readDefaultModel() {
             log("Model: \(model)")
@@ -121,7 +123,8 @@ actor GatewayRunner {
             let prompt = isGroup ? "\(senderName): \(text)" : text
             print("[\(ts)] [gateway] Calling backend (group=\(isGroup), session=\(existingSession ?? "new"))")
             let (response, newSessionId, shouldRespond) = try await backend.run(
-                prompt: prompt, model: model, sessionId: existingSession, isGroupChat: isGroup
+                prompt: prompt, model: model, sessionId: existingSession, isGroupChat: isGroup,
+                allowedTools: GatewayRunner.configuredAllowedTools
             )
             typingTask.cancel()
             print("[\(ts)] [gateway] Backend returned: shouldRespond=\(shouldRespond), hasResponse=\(response != nil), sessionId=\(newSessionId ?? "nil")")
@@ -146,7 +149,7 @@ actor GatewayRunner {
     private static func executeCronJob(_ job: CronJobConfig, api: TelegramAPI) async -> Result<String, Error> {
         do {
             let backend = await GatewayRunner.activeBackend.get()
-            let (response, _, _) = try await backend.run(prompt: job.prompt, model: nil, sessionId: nil, isGroupChat: false)
+            let (response, _, _) = try await backend.run(prompt: job.prompt, model: nil, sessionId: nil, isGroupChat: false, allowedTools: GatewayRunner.configuredAllowedTools)
             let text = response ?? ""
 
             if let chatIdStr = job.deliverTo, let chatId = Int64(chatIdStr) {

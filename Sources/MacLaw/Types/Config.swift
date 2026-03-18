@@ -3,6 +3,8 @@ import Foundation
 struct MacLawConfig: Codable {
     /// AI backend: "codex" (default) or "claude"
     var backend: String?
+    /// Tools the backend CLI is allowed to use without prompting (e.g., ["WebSearch", "WebFetch", "Read"])
+    var allowedTools: [String]?
     var telegram: TelegramConfig?
     var cron: CronConfig?
 }
