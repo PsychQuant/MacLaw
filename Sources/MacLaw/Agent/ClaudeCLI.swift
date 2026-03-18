@@ -12,7 +12,10 @@ struct ClaudeBackend: Backend {
         let stderrPipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        var args = ["claude", "-p", prompt, "--output-format", "text"]
+        var args = ["claude", "-p", prompt, "--output-format", "json"]
+        if let sid = sessionId {
+            args += ["--resume", sid]
+        }
         if let model {
             args += ["--model", model]
         }
@@ -32,9 +35,12 @@ struct ClaudeBackend: Backend {
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if !stdout.isEmpty {
-                    // Claude CLI doesn't support session resume yet
-                    continuation.resume(returning: (stdout, nil))
+
+                // Parse JSON output to get session_id and result text
+                let (text, newSessionId) = Self.parseJsonOutput(stdout)
+
+                if let text, !text.isEmpty {
+                    continuation.resume(returning: (text, newSessionId))
                 } else {
                     let error = stderr.isEmpty ? "claude exited with status \(proc.terminationStatus)" : stderr
                     continuation.resume(throwing: BackendError.executionFailed(error))
@@ -46,6 +52,19 @@ struct ClaudeBackend: Backend {
                 continuation.resume(throwing: BackendError.launchFailed(error.localizedDescription))
             }
         }
+    }
+
+    /// Parse claude -p --output-format json output.
+    /// Format: {"type":"result","subtype":"success","session_id":"uuid","result":"text",...}
+    private static func parseJsonOutput(_ output: String) -> (text: String?, sessionId: String?) {
+        guard let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            // Fallback: treat as plain text
+            return (output.isEmpty ? nil : output, nil)
+        }
+        let text = json["result"] as? String
+        let sessionId = json["session_id"] as? String
+        return (text, sessionId)
     }
 
     func readDefaultModel() -> String? {
@@ -69,10 +88,8 @@ struct ClaudeBackend: Backend {
 
     func isAuthenticated() -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        // Claude stores auth in various locations; check if CLI reports logged in
         let result = shellRun("claude auth status 2>&1 | grep -qi 'logged in'")
         if result.exitCode == 0 { return true }
-        // Fallback: check if credentials directory exists with files
         let credDir = "\(home)/.claude/credentials"
         return (try? FileManager.default.contentsOfDirectory(atPath: credDir))?.isEmpty == false
     }
