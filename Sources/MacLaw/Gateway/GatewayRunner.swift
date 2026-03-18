@@ -117,15 +117,18 @@ actor GatewayRunner {
             let chatKey = String(chatId)
             let isGroup = message.chat.type != "private"
             let existingSession = await GatewayRunner.sessionManager.getSessionId(forChat: chatKey)
+            print("[\(ts)] [gateway] Calling backend (group=\(isGroup), session=\(existingSession ?? "new"))")
             let (response, newSessionId, shouldRespond) = try await backend.run(
                 prompt: text, model: model, sessionId: existingSession, isGroupChat: isGroup
             )
             typingTask.cancel()
+            print("[\(ts)] [gateway] Backend returned: shouldRespond=\(shouldRespond), hasResponse=\(response != nil), sessionId=\(newSessionId ?? "nil")")
             if let sid = newSessionId ?? existingSession {
                 await GatewayRunner.sessionManager.updateSession(chatId: chatKey, sessionId: sid)
             }
             guard shouldRespond, let response, !response.isEmpty else {
-                return  // AI decided not to respond
+                print("[\(ts)] [gateway] Skipping reply (shouldRespond=\(shouldRespond))")
+                return
             }
             try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
