@@ -18,11 +18,18 @@ struct TGMessage: Decodable {
     let chat: TGChat
     let date: Int
     let text: String?
+    let replyToMessage: TGReplyMessage?
 
     enum CodingKeys: String, CodingKey {
         case messageId = "message_id"
         case from, chat, date, text
+        case replyToMessage = "reply_to_message"
     }
+}
+
+/// Lightweight version to avoid recursive decoding
+struct TGReplyMessage: Decodable {
+    let from: TGUser?
 }
 
 struct TGUser: Decodable {

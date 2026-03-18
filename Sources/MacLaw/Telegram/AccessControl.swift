@@ -43,7 +43,7 @@ enum AccessControl {
         }
     }
 
-    // MARK: - Group
+    // MARK: - Group — only respond when talking to the bot
 
     private static func checkGroup(message: TGMessage, senderId: String, config: TelegramConfig) -> Decision {
         let policy = config.groupPolicy ?? "open"
@@ -51,26 +51,35 @@ enum AccessControl {
         switch policy {
         case "disabled":
             return .ignored
-
         case "allowlist":
             let allowed = config.groupAllowFrom ?? config.allowFrom ?? []
             if !allowed.isEmpty && !allowed.contains("*") && !allowed.contains(senderId) {
                 return .ignored
             }
-
-        default: // "open"
+        default:
             break
         }
 
-        // Check requireMention
-        if config.requireMention == true {
-            guard let text = message.text else { return .ignored }
-            let botName = config.botUsername ?? "PsychQuantMacLaw_bot"
-            if !text.contains("@\(botName)") {
-                return .ignored
-            }
+        let botName = config.botUsername ?? "PsychQuantMacLaw_bot"
+
+        // /commands → always respond
+        if let text = message.text, text.hasPrefix("/") {
+            return .allowed
         }
 
-        return .allowed
+        // @mention → talking to the bot (forced reply)
+        if let text = message.text, text.contains("@\(botName)") {
+            return .allowed
+        }
+
+        // Reply to bot's message → continuing conversation with bot
+        if let reply = message.replyToMessage,
+           let replyUser = reply.from,
+           replyUser.username == botName {
+            return .allowed
+        }
+
+        // Otherwise → not talking to the bot, ignore
+        return .ignored
     }
 }
