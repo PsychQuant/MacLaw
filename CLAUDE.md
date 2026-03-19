@@ -40,7 +40,7 @@ Follow macOS CLI conventions (`defaults`, `launchctl`, `networksetup`):
 
 ### Zero manual configuration for models
 
-MacLaw does NOT maintain its own model list. Model discovery is delegated entirely to the backend CLI:
+MacLaw does NOT maintain its own model list. Model discovery is delegated entirely to the backend:
 - **Codex**: reads `~/.codex/config.toml` for model and auth status
 - **Claude**: reads `~/.claude/settings.json` for model and auth status
 - Users change models via the backend's own config (`codex` or `claude` settings), not via MacLaw
@@ -50,7 +50,7 @@ MacLaw does NOT maintain its own model list. Model discovery is delegated entire
 ### Session memory — let the AI manage it
 
 MacLaw maintains one persistent codex/claude session per Telegram chat. Sessions never expire automatically:
-- The backend CLI (codex/claude) manages its own context window, compaction, and memory
+- The backend (codex/claude) manages its own context window, compaction, and memory
 - MacLaw does NOT impose timeouts, token limits, or automatic session rotation
 - Users control sessions via `/reset` (start fresh) — this is the only way to end a session
 - Session mapping (chatId → sessionId) is persisted in `~/.maclaw/sessions.json`
@@ -60,17 +60,17 @@ This follows the same principle as "delegate to CLI" — session/memory manageme
 
 ### Backend as a swappable adapter
 
-MacLaw supports multiple LLM backends. Each backend is a CLI tool that MacLaw shells out to:
+MacLaw supports multiple LLM backends. Each backend handles prompt execution independently:
 
-| Backend | CLI | Non-interactive | Install | Login |
-|---------|-----|-----------------|---------|-------|
+| Backend | Invocation | Non-interactive | Install | Login |
+|---------|-----------|-----------------|---------|-------|
 | codex | `codex exec "prompt" --full-auto` | Yes | `brew install codex` | `codex --login` |
-| claude | `claude -p "prompt" --output-format json` | Yes | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude login` |
+| claude | `claude -p "prompt" --output-format json` | Yes | See claude.ai | `claude login` |
 
 ### Separation of concerns: setup vs backend
 
 Backend installation and MacLaw setup are **independent operations**:
-- `maclaw backend install <name>` — install/update a backend CLI. Checks `which` first, skips if already installed.
+- `maclaw backend install <name>` — install/update a backend. Checks `which` first, skips if already installed.
 - `maclaw backend login` — run the backend's login flow
 - `maclaw setup` — configure MacLaw itself (Telegram token, daemon). Does NOT install or configure backends.
 
@@ -113,16 +113,16 @@ maclaw daemon install|uninstall|status
 ## Architecture
 
 ```
-Telegram ←→ Gateway ←→ Backend CLI (codex exec / claude -p)
+Telegram ←→ Gateway ←→ Backend (codex / claude)
                  │
             Cron Scheduler
 ```
 
 MacLaw is a bridge/orchestrator. It does NOT:
-- Call LLM APIs directly (delegate to backend CLI)
-- Manage OAuth tokens (delegate to backend CLI)
-- Maintain a model catalog (read from backend config)
-- Implement its own agent logic (delegate to backend CLI)
+- Call LLM APIs directly (delegates to backend)
+- Manage OAuth tokens (delegates to backend)
+- Maintain a model catalog (reads from backend config)
+- Implement its own agent logic (delegates to backend)
 
 ## Key Files
 

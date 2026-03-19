@@ -78,7 +78,7 @@ struct BackendSet: ParsableCommand {
 struct BackendInstall: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install",
-        abstract: "Install a backend CLI (codex or claude)"
+        abstract: "Install a backend (codex or claude)"
     )
 
     @Argument(help: "Backend name: codex or claude")

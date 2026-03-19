@@ -1,16 +1,19 @@
 import Foundation
 
-/// Orchestrates all MacLaw services: Telegram + Backend CLI + Cron.
+/// Orchestrates all MacLaw services: Telegram + Backend + Cron.
 actor GatewayRunner {
     static let currentModel = CurrentModel()
     static let activeBackend = ActiveBackend()
     static let sessionManager = SessionManager()
     static let permissionMode = PermissionMode()
     nonisolated(unsafe) static var configuredAllowedTools: [String]?
+    nonisolated(unsafe) static var sharedActivationEngine: ActivationEngine?
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
     private var cronScheduler: CronScheduler?
+    private var activationEngine: ActivationEngine?
+    private var pipelines: [PipelineConfig] = []
 
     init(config: MacLawConfig) {
         self.config = config
@@ -45,13 +48,26 @@ actor GatewayRunner {
         await poller!.start()
         log("Telegram poller started")
 
-        // 3. Start cron scheduler
+        // 3. Start cron scheduler (legacy)
         if let cronJobs = config.cron?.jobs, !cronJobs.isEmpty {
             let cronAPI = api
             cronScheduler = CronScheduler(jobs: cronJobs) { job in
                 await GatewayRunner.executeCronJob(job, api: cronAPI)
             }
             await cronScheduler!.start()
+        }
+
+        // 4. Start activation engine (new: event, schedule, interval + pipeline)
+        let configuredActivations = buildActivations(from: config)
+        if !configuredActivations.isEmpty {
+            pipelines = config.pipelines ?? []
+            let activationAPI = api
+            let activationPipelines = pipelines
+            activationEngine = ActivationEngine(activations: configuredActivations) { activation, context in
+                await GatewayRunner.executeActivation(activation, context: context, pipelines: activationPipelines, api: activationAPI)
+            }
+            await activationEngine!.start()
+            GatewayRunner.sharedActivationEngine = activationEngine
         }
 
         log("MacLaw gateway running. Press Ctrl+C to stop.")
@@ -75,6 +91,7 @@ actor GatewayRunner {
     func stop() async {
         await poller?.stop()
         await cronScheduler?.stop()
+        await activationEngine?.stop()
         log("Gateway stopped")
     }
 
@@ -97,6 +114,15 @@ actor GatewayRunner {
             return
         case .allowed:
             break
+        }
+
+        // Check event activations (runs in parallel with normal chat handling)
+        if let engine = GatewayRunner.sharedActivationEngine {
+            let _ = await engine.handleTelegramMessage(
+                chatId: String(chatId),
+                senderId: message.from?.id.description ?? "",
+                text: text
+            )
         }
 
         if text.hasPrefix("/") {
@@ -162,6 +188,87 @@ actor GatewayRunner {
             return .success(text)
         } catch {
             return .failure(error)
+        }
+    }
+
+    /// Build activation configs, including legacy cron jobs mapped to interval activations.
+    private func buildActivations(from config: MacLawConfig) -> [ActivationConfig] {
+        var result = config.activations ?? []
+
+        // Map legacy cron jobs to interval activations (backward compatibility)
+        if let cronJobs = config.cron?.jobs {
+            for job in cronJobs {
+                let id = job.id ?? "cron-\(job.name)"
+                // Skip if there's already an activation with this ID
+                guard !result.contains(where: { $0.id == id }) else { continue }
+
+                let schedule = job.schedule
+                if schedule.hasPrefix("every ") {
+                    let intervalStr = String(schedule.dropFirst(6))
+                    result.append(ActivationConfig(
+                        id: id, type: .interval, enabled: true,
+                        schedule: nil, interval: intervalStr, event: nil,
+                        action: ActionConfig(type: .task, prompt: job.prompt, pipeline: nil)
+                    ))
+                    log("Mapped legacy cron '\(job.name)' → activation-interval '\(id)'")
+                }
+                // "at <date>" one-shots stay in legacy CronScheduler for now
+            }
+        }
+
+        return result
+    }
+
+    private static func executeActivation(
+        _ activation: ActivationConfig,
+        context: ActivationContext,
+        pipelines: [PipelineConfig],
+        api: TelegramAPI
+    ) async -> Result<String, Error> {
+        switch activation.action.type {
+        case .task:
+            // Single task: run prompt through backend
+            guard let prompt = activation.action.prompt else {
+                return .failure(GatewayError.missingConfig("activation prompt"))
+            }
+            do {
+                let backend = await GatewayRunner.activeBackend.get()
+                let (response, _, _) = try await backend.run(
+                    prompt: prompt, model: nil, sessionId: nil,
+                    isGroupChat: false, allowedTools: GatewayRunner.configuredAllowedTools
+                )
+                return .success(response ?? "")
+            } catch {
+                return .failure(error)
+            }
+
+        case .pipeline:
+            guard let pipelineId = activation.action.pipeline,
+                  let pipeline = pipelines.first(where: { $0.id == pipelineId }) else {
+                return .failure(PipelineError.pipelineNotFound(id: activation.action.pipeline ?? "nil"))
+            }
+
+            let runner = PipelineRunner { prompt in
+                do {
+                    let backend = await GatewayRunner.activeBackend.get()
+                    let (response, _, _) = try await backend.run(
+                        prompt: prompt, model: nil, sessionId: nil,
+                        isGroupChat: false, allowedTools: GatewayRunner.configuredAllowedTools
+                    )
+                    return .success(response ?? "")
+                } catch {
+                    return .failure(error)
+                }
+            }
+
+            let result = await runner.run(pipeline: pipeline, context: context)
+            switch result {
+            case .success(let steps):
+                let output = steps.last?.output ?? ""
+                return .success(output)
+            case .failure(let error):
+                return .failure(error)
+            }
         }
     }
 

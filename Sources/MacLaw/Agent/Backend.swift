@@ -1,6 +1,6 @@
 import Foundation
 
-/// A backend that MacLaw delegates LLM work to via CLI.
+/// A backend that MacLaw delegates LLM work to.
 protocol Backend: Sendable {
     var name: String { get }
     var cliName: String { get }
@@ -16,7 +16,7 @@ protocol Backend: Sendable {
     /// Read full config status (model, effort, sandbox, etc.)
     func readConfigSummary() -> [String: String]
 
-    /// Check if the CLI is installed.
+    /// Check if the backend is installed.
     func isInstalled() -> Bool
 
     /// Check if the user is authenticated.
