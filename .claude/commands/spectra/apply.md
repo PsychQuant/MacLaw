@@ -1,12 +1,13 @@
 ---
 name: Spectra: Apply
-description: Implement tasks from an OpenSpec change
+description: Implement tasks from a Spectra change
 category: Workflow
 tags: ["workflow", "artifacts"]
 ---
 
 <!-- SPECTRA:START v1.0.1 -->
-Implement tasks from an OpenSpec change.
+
+Implement tasks from a Spectra change.
 
 **Input**: Optionally specify a change name (e.g., `/spectra:apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
@@ -28,7 +29,7 @@ Implement tasks from an OpenSpec change.
 2. **Check status to understand the schema**
 
    ```bash
-   spectra status --change "<name>" --json 2>/dev/null
+   spectra status --change "<name>" --json
    ```
 
    **If the command fails**: show the error and STOP.
@@ -239,4 +240,5 @@ This skill supports the "actions on a change" model:
 
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
+
 <!-- SPECTRA:END -->

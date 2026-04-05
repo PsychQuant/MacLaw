@@ -2,20 +2,20 @@
 name: spectra-propose
 description: "Create a change proposal with all required artifacts"
 license: MIT
-compatibility: Requires openspec CLI.
+compatibility: Requires spectra CLI.
 metadata:
   author: spectra
   version: "1.0"
   generatedBy: "Spectra"
 ---
 
-Create a complete OpenSpec change proposal — from requirement to validated artifacts — in a single workflow.
+Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 
-**Input**: The argument after `/spectra:propose` is the requirement description. Examples:
+**Input**: The argument after `/spectra-propose` is the requirement description. Examples:
 
-- `/spectra:propose add dark mode`
-- `/spectra:propose fix the login page crash`
-- `/spectra:propose improve search performance`
+- `/spectra-propose add dark mode`
+- `/spectra-propose fix the login page crash`
+- `/spectra-propose improve search performance`
 
 If no argument is provided, the workflow will extract requirements from conversation context or ask.
 
@@ -27,7 +27,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below.
 
-   b. **Plan file available** (Claude Code only):
+   b. **Plan file available**:
    - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
    - If found, check if the file exists at `~/.claude/plans/`
    - If a plan file is found, use the **AskUserQuestion tool** to ask:
@@ -237,12 +237,12 @@ If no argument is provided, the workflow will extract requirements from conversa
     - Validation result
 
     Use **AskUserQuestion tool** to ask what to do next. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-    - **First option (will be auto-selected)**: "Park" — Execute `spectra park "<name>"` to stash the change, then inform the user they can run `/spectra:apply <change-name>` when ready (which will auto-unpark).
-    - **Second option**: "Apply" — Invoke `/spectra:apply <change-name>` to start implementation.
+    - **First option (will be auto-selected)**: "Park" — Execute `spectra park "<name>"` to park the change, then inform the user they can run `/spectra-apply <change-name>` when ready (which will auto-unpark).
+    - **Second option**: "Apply" — Invoke `/spectra-apply <change-name>` to start implementation.
 
-    If **AskUserQuestion tool** is not available, execute `spectra park "<name>"` and inform the user to run `/spectra:apply <change-name>` when ready. Then STOP — do not continue.
+    If **AskUserQuestion tool** is not available, execute `spectra park "<name>"` and inform the user to run `/spectra-apply <change-name>` when ready. Then STOP — do not continue.
 
-    **After the user responds**, if they chose "Park", execute `spectra park "<name>"` and the workflow is OVER. If they chose "Apply", invoke `/spectra:apply <change-name>` to begin implementation.
+    **After the user responds**, if they chose "Park", execute `spectra park "<name>"` and the workflow is OVER. If they chose "Apply", invoke `/spectra-apply <change-name>` to begin implementation.
 
 **Artifact Creation Guidelines**
 
@@ -264,5 +264,5 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** write application code or implement features during this workflow
 - **NEVER** skip the artifact workflow to write code directly
 - **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `/spectra:apply` — this workflow ends after artifact creation. The user decides when to start implementation
+- **NEVER** invoke `/spectra-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response

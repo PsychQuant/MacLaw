@@ -2,14 +2,14 @@
 name: spectra-propose
 description: "Create a change proposal with all required artifacts"
 license: MIT
-compatibility: Requires openspec CLI.
+compatibility: Requires spectra CLI.
 metadata:
   author: spectra
   version: "1.0"
   generatedBy: "Spectra"
 ---
 
-Create a complete OpenSpec change proposal — from requirement to validated artifacts — in a single workflow.
+Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 
 **Input**: The argument after `/spectra:propose` is the requirement description. Examples:
 
@@ -27,9 +27,9 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below.
 
-   b. **Plan file available** (Claude Code only):
-   - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
-   - If found, check if the file exists at `~/.claude/plans/`
+   b. **Plan file available**:
+   - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `<name>.md`)
+   - If found, check if the file exists at ``
    - If a plan file is found, use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
@@ -237,7 +237,7 @@ If no argument is provided, the workflow will extract requirements from conversa
     - Validation result
 
     Use **AskUserQuestion tool** to ask what to do next. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-    - **First option (will be auto-selected)**: "Park" — Execute `spectra park "<name>"` to stash the change, then inform the user they can run `/spectra:apply <change-name>` when ready (which will auto-unpark).
+    - **First option (will be auto-selected)**: "Park" — Execute `spectra park "<name>"` to park the change, then inform the user they can run `/spectra:apply <change-name>` when ready (which will auto-unpark).
     - **Second option**: "Apply" — Invoke `/spectra:apply <change-name>` to start implementation.
 
     If **AskUserQuestion tool** is not available, execute `spectra park "<name>"` and inform the user to run `/spectra:apply <change-name>` when ready. Then STOP — do not continue.

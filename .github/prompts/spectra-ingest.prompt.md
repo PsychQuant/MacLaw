@@ -1,21 +1,18 @@
 ---
-name: Spectra: Ingest
 description: Update an existing Spectra change from a plan file or conversation context
-category: Workflow
-tags: ["workflow", "import", "plan", "claude"]
 ---
 
 <!-- SPECTRA:START v1.0.1 -->
 
 Update an existing Spectra change — from a plan file or conversation context.
 
-**Plan file support** is available when the tool has a plan directory (`~/.claude/plans/`). Otherwise, use conversation context to update artifacts.
+This tool uses conversation context to update artifacts (no plan file directory). Otherwise, use conversation context to update artifacts.
 
 **Prerequisites**: This skill requires the `spectra` CLI. If any `spectra` command fails with "command not found" or similar, report the error and STOP.
 
 **Input**: Optionally specify a plan file path or name.
 
-- `/spectra:ingest ~/.claude/plans/agile-discovering-rocket.md`
+- `/spectra:ingest agile-discovering-rocket.md`
 - `/spectra:ingest agile-discovering-rocket`
 - `/spectra:ingest` (use conversation context or auto-detect plan file)
 
@@ -23,12 +20,12 @@ Update an existing Spectra change — from a plan file or conversation context.
 
 1. **Locate the requirement source**
 
-   a. **Argument provided** → treat as plan file reference (prepend `~/.claude/plans/` and append `.md` if needed)
+   a. **Argument provided** → treat as plan file reference (prepend `` and append `.md` if needed)
    - If the file exists → use it as the plan file source, proceed to Step 2
    - If the file does NOT exist → report the error and **stop**
 
    b. **No argument, plan file detectable**:
-   - Check conversation context for plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
+   - Check conversation context for plan file path (plan mode system messages include the path like `<name>.md`)
    - If found and the file exists → use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
@@ -36,7 +33,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    - If the user picks conversation context → skip Step 2, go to Step 3
 
    c. **No argument, no plan file detectable**:
-   - Check `~/.claude/plans/` for recent files
+   - Check `` for recent files
    - If recent files exist → list 5 most recent with the **AskUserQuestion tool**, include "Use conversation context" as an additional option
    - If the user picks a file → proceed to Step 2
    - If the user picks conversation context → skip Step 2, go to Step 3
@@ -190,7 +187,7 @@ Update an existing Spectra change — from a plan file or conversation context.
 
 **Guardrails**
 
-- **NEVER** modify the original plan file in `~/.claude/plans/`
+- **NEVER** modify the original plan file in ``
 - **NEVER** write application code — this skill only creates/updates Spectra artifacts
 - **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `/spectra:propose`
 - When updating existing changes, **preserve all completed tasks** (`[x]`) — never revert progress

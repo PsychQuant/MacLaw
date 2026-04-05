@@ -1,15 +1,15 @@
 ---
 name: spectra-apply
-description: "Implement or resume tasks from an OpenSpec change"
+description: "Implement or resume tasks from a Spectra change"
 license: MIT
-compatibility: Requires openspec CLI.
+compatibility: Requires spectra CLI.
 metadata:
   author: spectra
   version: "1.0"
   generatedBy: "Spectra"
 ---
 
-Implement tasks from an OpenSpec change.
+Implement tasks from a Spectra change.
 
 **Input**: Optionally specify a change name (e.g., `/spectra:apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
@@ -31,7 +31,7 @@ Implement tasks from an OpenSpec change.
 2. **Check status to understand the schema**
 
    ```bash
-   spectra status --change "<name>" --json 2>/dev/null
+   spectra status --change "<name>" --json
    ```
 
    **If the command fails**: show the error and STOP.

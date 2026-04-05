@@ -6,6 +6,7 @@ tags: ["development", "debugging"]
 ---
 
 <!-- SPECTRA:START v1.0.1 -->
+
 Systematically debug a problem using a four-phase workflow.
 
 **This skill enforces debugging discipline.** No guessing, no random changes, no "let me try this." Every step is deliberate and evidence-based.
@@ -110,4 +111,5 @@ Now — and only now — fix the bug.
 - **Don't power through** — After 3 failed attempts, stop and reassess
 - **Do keep notes** — Document what you tried, what you found, what you ruled out
 - **Do check broadly** — A bug in one place often means the same bug exists elsewhere
+
 <!-- SPECTRA:END -->
