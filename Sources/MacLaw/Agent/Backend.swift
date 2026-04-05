@@ -5,10 +5,14 @@ protocol Backend: Sendable {
     var name: String { get }
     var cliName: String { get }
 
-    /// Run a prompt and return result.
+    /// Run a prompt and return result (blocking — use spawn() for non-blocking).
     /// - isGroupChat: when true, backend uses structured output to decide whether to respond
     /// - sessionId: pass to resume an existing session
     func run(prompt: String, model: String?, sessionId: String?, isGroupChat: Bool, allowedTools: [String]?) async throws -> (response: String?, sessionId: String?, shouldRespond: Bool)
+
+    /// Spawn a prompt as a detached process. Returns a BackendTask for monitoring.
+    /// Output is written to a temp file. The caller is responsible for monitoring and cleanup.
+    func spawn(prompt: String, model: String?, sessionId: String?, isGroupChat: Bool, allowedTools: [String]?, chatId: Int64) throws -> BackendTask
 
     /// Read the default model from the backend's own config.
     func readDefaultModel() -> String?

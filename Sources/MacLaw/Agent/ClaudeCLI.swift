@@ -94,6 +94,61 @@ struct ClaudeBackend: Backend {
         return (text, sessionId, true)
     }
 
+    func spawn(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false, allowedTools: [String]? = nil, chatId: Int64) throws -> BackendTask {
+        let taskId = UUID().uuidString
+        let outputFile = NSTemporaryDirectory() + "maclaw-claude-\(taskId).json"
+        let stderrFile = NSTemporaryDirectory() + "maclaw-claude-\(taskId).err"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = URL(fileURLWithPath: "\(FileManager.default.homeDirectoryForCurrentUser.path)/.maclaw/workspace")
+
+        var args = ["claude", "-p", prompt, "--output-format", "json"]
+        if let tools = allowedTools, !tools.isEmpty {
+            for tool in tools {
+                args += ["--allowedTools", tool]
+            }
+        } else if allowedTools == nil {
+            args += ["--dangerously-skip-permissions"]
+        }
+        if let sid = sessionId {
+            args += ["--resume", sid]
+        }
+        if let model {
+            args += ["--model", model]
+        }
+        if isGroupChat {
+            args += ["--json-schema", Self.groupSchema]
+        }
+        process.arguments = args
+
+        // Redirect output to files
+        FileManager.default.createFile(atPath: outputFile, contents: nil)
+        FileManager.default.createFile(atPath: stderrFile, contents: nil)
+        process.standardOutput = FileHandle(forWritingAtPath: outputFile)!
+        process.standardError = FileHandle(forWritingAtPath: stderrFile)!
+
+        var env = ProcessInfo.processInfo.environment
+        let home = env["HOME"] ?? ""
+        let extraPaths = ["/usr/local/bin", "/opt/homebrew/bin", "\(home)/Library/pnpm", "\(home)/.local/bin"]
+        env["PATH"] = (extraPaths + [env["PATH"] ?? ""]).joined(separator: ":")
+        process.environment = env
+
+        try process.run()
+
+        return BackendTask(
+            id: taskId,
+            pid: process.processIdentifier,
+            chatId: chatId,
+            prompt: String(prompt.prefix(200)),
+            outputFile: outputFile,
+            stderrFile: stderrFile,
+            startedAt: Date(),
+            isGroupChat: isGroupChat,
+            sessionId: sessionId
+        )
+    }
+
     func readDefaultModel() -> String? {
         readConfigSummary()["model"]
     }

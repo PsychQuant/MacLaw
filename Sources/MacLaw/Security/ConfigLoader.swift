@@ -10,13 +10,19 @@ enum ConfigLoader {
 
     static var configPath: String { "\(configDir)/maclaw.json" }
 
+    /// Load config without resolving secrets. Safe for CLI commands that only read config structure.
     static func load() throws -> MacLawConfig {
         let path = configPath
         guard FileManager.default.fileExists(atPath: path) else {
             throw ConfigError.fileNotFound(path)
         }
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        let config = try JSONDecoder().decode(MacLawConfig.self, from: data)
+        return try JSONDecoder().decode(MacLawConfig.self, from: data)
+    }
+
+    /// Load config with all @keychain: refs resolved. Use only when actual secret values are needed (e.g., gateway startup).
+    static func loadResolved() throws -> MacLawConfig {
+        let config = try load()
         return try resolveRefs(config)
     }
 

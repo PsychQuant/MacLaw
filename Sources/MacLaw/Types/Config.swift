@@ -11,6 +11,8 @@ struct MacLawConfig: Codable {
     var activations: [ActivationConfig]?
     /// Pipeline definitions
     var pipelines: [PipelineConfig]?
+    /// Minutes of CPU idle before a backend process is considered stuck and killed (default: 10)
+    var livenessIdleMinutes: Int?
 }
 
 struct TelegramConfig: Codable {

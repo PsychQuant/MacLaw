@@ -8,11 +8,13 @@ actor GatewayRunner {
     static let permissionMode = PermissionMode()
     nonisolated(unsafe) static var configuredAllowedTools: [String]?
     nonisolated(unsafe) static var sharedActivationEngine: ActivationEngine?
+    nonisolated(unsafe) static var sharedTaskMonitor: TaskMonitor?
     private let config: MacLawConfig
     private var telegramAPI: TelegramAPI?
     private var poller: TelegramPoller?
     private var cronScheduler: CronScheduler?
     private var activationEngine: ActivationEngine?
+    private var taskMonitor: TaskMonitor?
     private var pipelines: [PipelineConfig] = []
 
     init(config: MacLawConfig) {
@@ -38,6 +40,21 @@ actor GatewayRunner {
         }
         let api = TelegramAPI(token: tgConfig.botToken)
         telegramAPI = api
+
+        // 1b. Initialize task monitor (liveness-based, no timeout)
+        let monitorAPI = api
+        let idleMinutes = config.livenessIdleMinutes ?? 10
+        taskMonitor = TaskMonitor(
+            idleThresholdMinutes: idleMinutes,
+            onComplete: { task, output in
+                await GatewayRunner.handleTaskComplete(task: task, output: output, api: monitorAPI)
+            },
+            onStuck: { task in
+                await GatewayRunner.handleTaskStuck(task: task, api: monitorAPI)
+            }
+        )
+        GatewayRunner.sharedTaskMonitor = taskMonitor
+        log("Task monitor started (idle threshold: \(idleMinutes)m)")
 
         // 2. Start Telegram poller
         let tgAPI = api
@@ -92,7 +109,67 @@ actor GatewayRunner {
         await poller?.stop()
         await cronScheduler?.stop()
         await activationEngine?.stop()
+        await taskMonitor?.stop()
         log("Gateway stopped")
+    }
+
+    // MARK: - Task completion callbacks
+
+    private static func handleTaskComplete(task: BackendTask, output: String?, api: TelegramAPI) async {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let elapsed = Int(Date().timeIntervalSince(task.startedAt))
+        print("[\(ts)] [gateway] Task \(task.id) completed in \(elapsed)s")
+
+        // Parse output based on backend type
+        guard let output, !output.isEmpty else {
+            print("[\(ts)] [gateway] Task \(task.id) produced no output")
+            return
+        }
+
+        // For group chat, parse structured output
+        if task.isGroupChat {
+            if let data = output.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let shouldRespond = json["shouldRespond"] as? Bool ?? true
+                let response = json["response"] as? String
+                    ?? json["result"] as? String
+                    ?? output
+                guard shouldRespond, !response.isEmpty else {
+                    print("[\(ts)] [gateway] Task \(task.id) chose not to respond")
+                    return
+                }
+                try? await TelegramSender.send(api: api, chatId: task.chatId, text: response)
+
+                // Update session
+                let sessionId = json["session_id"] as? String ?? task.sessionId
+                if let sid = sessionId {
+                    await GatewayRunner.sessionManager.updateSession(chatId: String(task.chatId), sessionId: sid)
+                }
+                return
+            }
+        }
+
+        // Non-group or plain output: parse JSON if possible, otherwise send raw
+        if let data = output.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let text = json["result"] as? String ?? output
+            let sessionId = json["session_id"] as? String ?? task.sessionId
+            if let sid = sessionId {
+                await GatewayRunner.sessionManager.updateSession(chatId: String(task.chatId), sessionId: sid)
+            }
+            if !text.isEmpty {
+                try? await TelegramSender.send(api: api, chatId: task.chatId, text: text)
+            }
+        } else {
+            try? await TelegramSender.send(api: api, chatId: task.chatId, text: output)
+        }
+    }
+
+    private static func handleTaskStuck(task: BackendTask, api: TelegramAPI) async {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let elapsed = Int(Date().timeIntervalSince(task.startedAt))
+        print("[\(ts)] [gateway] Task \(task.id) stuck after \(elapsed)s, killed (PID \(task.pid))")
+        // Silent — don't send error message to user. They can ask again.
     }
 
     // MARK: - Message handling
@@ -132,44 +209,34 @@ actor GatewayRunner {
             }
         }
 
-        // Keep sending "typing..." every 4s until codex responds
-        let typingTask = Task {
-            while !Task.isCancelled {
-                try? await api.sendChatAction(chatId: chatId)
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-            }
-        }
-
+        // Spawn backend as detached process — don't block the gateway
         do {
             let backend = await GatewayRunner.activeBackend.get()
             let model = await GatewayRunner.currentModel.get()
             let chatKey = String(chatId)
             let isGroup = message.chat.type != "private"
             let existingSession = await GatewayRunner.sessionManager.getSessionId(forChat: chatKey)
-            // Group: include sender name so AI knows who's talking
             let prompt = isGroup ? "\(senderName): \(text)" : text
-            print("[\(ts)] [gateway] Calling backend (group=\(isGroup), session=\(existingSession ?? "new"))")
             let mode = await GatewayRunner.permissionMode.get()
             let tools: [String]? = mode == "full" ? nil : GatewayRunner.configuredAllowedTools
-            let (response, newSessionId, shouldRespond) = try await backend.run(
-                prompt: prompt, model: model, sessionId: existingSession, isGroupChat: isGroup,
-                allowedTools: tools
+
+            let task = try backend.spawn(
+                prompt: prompt, model: model, sessionId: existingSession,
+                isGroupChat: isGroup, allowedTools: tools, chatId: chatId
             )
-            typingTask.cancel()
-            print("[\(ts)] [gateway] Backend returned: shouldRespond=\(shouldRespond), hasResponse=\(response != nil), sessionId=\(newSessionId ?? "nil")")
-            if let sid = newSessionId ?? existingSession {
-                await GatewayRunner.sessionManager.updateSession(chatId: chatKey, sessionId: sid)
+            print("[\(ts)] [gateway] Spawned backend task \(task.id) (PID \(task.pid)) for chat \(chatId)")
+
+            // Send typing indicator once (monitor will handle completion)
+            try? await api.sendChatAction(chatId: chatId)
+
+            // Track with monitor — it will call back when done
+            if let monitor = GatewayRunner.sharedTaskMonitor {
+                await monitor.track(task)
             }
-            guard shouldRespond, let response, !response.isEmpty else {
-                print("[\(ts)] [gateway] Skipping reply (shouldRespond=\(shouldRespond))")
-                return
-            }
-            try await TelegramSender.send(api: api, chatId: chatId, text: response)
         } catch {
-            typingTask.cancel()
             let errorMsg = "Sorry, I'm having trouble right now. Please try again later."
             try? await api.sendMessage(chatId: chatId, text: errorMsg)
-            print("[\(ts)] [gateway] Error: \(error.localizedDescription)")
+            print("[\(ts)] [gateway] Error spawning backend: \(error.localizedDescription)")
         }
     }
 

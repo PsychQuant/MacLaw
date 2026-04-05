@@ -108,6 +108,64 @@ struct CodexBackend: Backend {
         return nil
     }
 
+    func spawn(prompt: String, model: String? = nil, sessionId: String? = nil, isGroupChat: Bool = false, allowedTools: [String]? = nil, chatId: Int64) throws -> BackendTask {
+        let taskId = UUID().uuidString
+        let outputFile = NSTemporaryDirectory() + "maclaw-codex-\(taskId).json"
+        let stderrFile = NSTemporaryDirectory() + "maclaw-codex-\(taskId).err"
+        let codexOutputFile = NSTemporaryDirectory() + "maclaw-codex-\(taskId).txt"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = URL(fileURLWithPath: "\(FileManager.default.homeDirectoryForCurrentUser.path)/.maclaw/workspace")
+
+        var args: [String]
+        if let sid = sessionId {
+            args = ["codex", "exec", "resume", sid, prompt,
+                    "-o", codexOutputFile, "--skip-git-repo-check", "--full-auto", "--json"]
+        } else {
+            args = ["codex", "exec", prompt,
+                    "--full-auto", "--skip-git-repo-check",
+                    "-o", codexOutputFile, "--json"]
+        }
+        if let model {
+            args += ["-m", model]
+        }
+        if isGroupChat {
+            let schemaPath = NSTemporaryDirectory() + "maclaw-schema-\(taskId).json"
+            let schema = """
+            {"type":"object","properties":{"shouldRespond":{"type":"boolean"},"response":{"type":"string"}},"required":["shouldRespond"]}
+            """
+            try schema.write(toFile: schemaPath, atomically: true, encoding: .utf8)
+            args += ["--output-schema", schemaPath]
+        }
+        process.arguments = args
+
+        FileManager.default.createFile(atPath: outputFile, contents: nil)
+        FileManager.default.createFile(atPath: stderrFile, contents: nil)
+        process.standardOutput = FileHandle(forWritingAtPath: outputFile)!
+        process.standardError = FileHandle(forWritingAtPath: stderrFile)!
+
+        var env = ProcessInfo.processInfo.environment
+        let home = env["HOME"] ?? ""
+        let extraPaths = ["/usr/local/bin", "/opt/homebrew/bin", "\(home)/Library/pnpm", "\(home)/.local/bin"]
+        env["PATH"] = (extraPaths + [env["PATH"] ?? ""]).joined(separator: ":")
+        process.environment = env
+
+        try process.run()
+
+        return BackendTask(
+            id: taskId,
+            pid: process.processIdentifier,
+            chatId: chatId,
+            prompt: String(prompt.prefix(200)),
+            outputFile: codexOutputFile,  // Codex writes to -o file, not stdout
+            stderrFile: stderrFile,
+            startedAt: Date(),
+            isGroupChat: isGroupChat,
+            sessionId: sessionId
+        )
+    }
+
     func readDefaultModel() -> String? {
         readConfigSummary()["model"]
     }

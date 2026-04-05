@@ -16,7 +16,7 @@ struct GatewayRun: AsyncParsableCommand {
     )
 
     func run() async throws {
-        let config = try ConfigLoader.load()
+        let config = try ConfigLoader.loadResolved()
         let runner = GatewayRunner(config: config)
         try await runner.run()
     }
@@ -62,7 +62,7 @@ struct GatewayRestart: AsyncParsableCommand {
         }
 
         print("Starting new gateway...")
-        let config = try ConfigLoader.load()
+        let config = try ConfigLoader.loadResolved()
         let runner = GatewayRunner(config: config)
         try await runner.run()
     }
